@@ -88,6 +88,7 @@ struct MaterialPipeline
 	VkPipelineLayout layout;
 };
 
+//an instance of a material (not texture) in some pipeline. 
 struct MaterialInstance 
 {
     MaterialPipeline* pipeline;

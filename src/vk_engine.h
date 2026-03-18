@@ -185,13 +185,10 @@ public:
 
 	//pipeline---
 	//gradient/bg
-	VkPipeline _gradientPipeline;
 	VkPipelineLayout _gradientPipelineLayout;
 	std::vector<ComputeEffect> backgroundEffects;
 	int currentBackgroundEffect{0};
 	//mesh
-	VkPipelineLayout _meshPipelineLayout;
-	VkPipeline _meshPipeline;
 	GPUMeshBuffers uploadMesh(std::span<uint32_t> indices, std::span<Vertex> vertices);
 	std::vector<std::shared_ptr<MeshAsset>> testMeshes;
 
@@ -200,7 +197,6 @@ public:
 	VkDescriptorSetLayout _gpuSceneDataDescriptorLayout;
 	
 	//image
-	VkDescriptorSetLayout _singleImageDescriptorLayout;
 	AllocatedImage _whiteImage;
 	AllocatedImage _blackImage;
 	AllocatedImage _greyImage;
@@ -241,7 +237,6 @@ private:
 	void init_default_data();
 	//pipelines
 	void init_background_pipelines();
-	void init_mesh_pipeline();
 
 	void create_swapchain(uint32_t width, uint32_t height);
 	void destroy_swapchain();
