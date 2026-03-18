@@ -202,12 +202,13 @@ void VulkanEngine::init_swapchain()
 
     // add to deletion queues
     _mainDeletionQueue.push_function([=, this]()
-                                     {
-	vkDestroyImageView(_device, _drawImage.imageView, nullptr);
-	vmaDestroyImage(_allocator, _drawImage.image, _drawImage.allocation);
+    {
+        vkDestroyImageView(_device, _drawImage.imageView, nullptr);
+        vmaDestroyImage(_allocator, _drawImage.image, _drawImage.allocation);
 
-	vkDestroyImageView(_device, _depthImage.imageView, nullptr);
-	vmaDestroyImage(_allocator, _depthImage.image, _depthImage.allocation); });
+        vkDestroyImageView(_device, _depthImage.imageView, nullptr);
+        vmaDestroyImage(_allocator, _depthImage.image, _depthImage.allocation); 
+    });
 }
 
 void VulkanEngine::destroy_swapchain()
@@ -287,7 +288,7 @@ void VulkanEngine::init_sync_structures()
     // immedaite submission fence
     VK_CHECK(vkCreateFence(_device, &fenceCreateInfo, nullptr, &_immFence));
     _mainDeletionQueue.push_function([=, this]()
-                                     { vkDestroyFence(_device, _immFence, nullptr); });
+        { vkDestroyFence(_device, _immFence, nullptr); });
 }
 
 void VulkanEngine::init_descriptors()
@@ -301,7 +302,7 @@ void VulkanEngine::init_descriptors()
     	{VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1},
         {VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 2}
     };
-    globalDescriptorAllocator.init(_device, 10, sizes); //10 sets can be allocated 
+    globalDescriptorAllocator.init(_device, 10, sizes); //10 sets can be allocated  from this one
 
     //  COMPUTE PIPELINE: make the descriptor set layout for our compute draw
     {
@@ -677,6 +678,22 @@ void VulkanEngine::init_default_data()
 
 	defaultData = metalRoughMaterial.write_material(_device, MaterialPass::MainColor, materialResources, globalDescriptorAllocator);
 
+    for (auto& m : testMeshes) 
+    {
+		std::shared_ptr<MeshNode> newNode = std::make_shared<MeshNode>();
+		newNode->mesh = m;
+
+		newNode->localTransform = glm::mat4{ 1.f };
+		newNode->worldTransform = glm::mat4{ 1.f };
+
+		for (auto& s : newNode->mesh->surfaces) 
+        {
+			s.material = std::make_shared<GLTFMaterial>(defaultData);
+		}
+
+		loadedNodes[m->name] = std::move(newNode);
+	}
+
 }
 
 void VulkanEngine::cleanup()
@@ -784,30 +801,6 @@ void VulkanEngine::draw_geometry(VkCommandBuffer cmd)
     scissor.extent.height = _drawExtent.height;
     vkCmdSetScissor(cmd, 0, 1, &scissor);
 
-    //Create/bind descriptor set with layout from init to bind a texture -------------------------------------------
-	VkDescriptorSet imageSet = get_current_frame()._frameDescriptors.allocate(_device, _singleImageDescriptorLayout);
-	{
-        //checkerboard sampler at index 0
-		DescriptorWriter writer; 
-		writer.write_image(0, _errorCheckerboardImage.imageView, _defaultSamplerNearest, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
-		writer.update_set(_device, imageSet);
-	}
-    vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, _meshPipelineLayout, 0, 1, &imageSet, 0, nullptr);
-    //----------------------------------------------------------------------------------------------------
-
-    // update push constants (buffer pointer and world matrix)-------------------------------------------
-    GPUDrawPushConstants push_constants;
-
-    glm::mat4 view = glm::translate(glm::vec3{0, 0, -5}) * glm::rotate(_frameNumber / 60.0f, glm::vec3(0, 1, 0));
-    glm::mat4 projection = glm::perspective(glm::radians(70.f), (float)_drawExtent.width / (float)_drawExtent.height, 10000.f, 0.1f);
-
-    // invert the Y direction on projection matrix so that we are more similar
-    // to opengl and gltf axis
-    projection[1][1] *= -1;
-    push_constants.worldMatrix = projection * view;
-    push_constants.vertexBuffer = testMeshes[2]->meshBuffers.vertexBufferAddress; // index 2 is monke
-    //------------------------------------------------------------------------------------------
-
     //CREATE PER-FRAME DESCRIPTOR SET (using layout defined in init)-----------------------------------------
 
     //allocate a new UBO for the scene data
@@ -821,7 +814,7 @@ void VulkanEngine::draw_geometry(VkCommandBuffer cmd)
 
 	//write the UBO with our cpu data
 	GPUSceneData* sceneUniformData = (GPUSceneData*)gpuSceneDataBuffer.allocation->GetMappedData(); //get cpu pointer to buffer mem
-	*sceneUniformData = sceneData; //set buffer mem to our cpu side scene data
+	*sceneUniformData = sceneData; //set buffer mem to our cpu side scene data. this is updated in update_scene
 
 	//create a descriptor set (from layout we described in setup), bind that buffer and update it
 	VkDescriptorSet globalDescriptor = get_current_frame()._frameDescriptors.allocate(_device, _gpuSceneDataDescriptorLayout);
@@ -835,15 +828,27 @@ void VulkanEngine::draw_geometry(VkCommandBuffer cmd)
 
 
     // draw mesh
-    vkCmdPushConstants(cmd, _meshPipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(GPUDrawPushConstants), &push_constants);
-    vkCmdBindIndexBuffer(cmd, testMeshes[2]->meshBuffers.indexBuffer.buffer, 0, VK_INDEX_TYPE_UINT32);
-    vkCmdDrawIndexed(cmd, testMeshes[2]->surfaces[0].count, 1, testMeshes[2]->surfaces[0].startIndex, 0, 0);
+    for (const RenderObject& draw : mainDrawContext.OpaqueSurfaces)
+    {
+		vkCmdBindPipeline(cmd,VK_PIPELINE_BIND_POINT_GRAPHICS, draw.material->pipeline->pipeline);
+		vkCmdBindDescriptorSets(cmd,VK_PIPELINE_BIND_POINT_GRAPHICS,draw.material->pipeline->layout, 0,1, &globalDescriptor,0,nullptr );
+		vkCmdBindDescriptorSets(cmd,VK_PIPELINE_BIND_POINT_GRAPHICS,draw.material->pipeline->layout, 1,1, &draw.material->materialSet,0,nullptr );
 
+		vkCmdBindIndexBuffer(cmd, draw.indexBuffer,0,VK_INDEX_TYPE_UINT32);
+
+		GPUDrawPushConstants pushConstants;
+		pushConstants.vertexBuffer = draw.vertexBufferAddress;
+		pushConstants.worldMatrix = draw.transform;
+		vkCmdPushConstants(cmd,draw.material->pipeline->layout ,VK_SHADER_STAGE_VERTEX_BIT,0, sizeof(GPUDrawPushConstants), &pushConstants);
+
+		vkCmdDrawIndexed(cmd,draw.indexCount,1,draw.firstIndex,0,0);
+	}
     vkCmdEndRendering(cmd);
 }
 
 void VulkanEngine::draw()
 {
+    update_scene();
     // CPU<->GPU SYNC::: wait for gpu to finish rendering last frame (wait max 1 second)
     // note, renderfence starts signalled on frame 0.
     VK_CHECK(vkWaitForFences(_device, 1, &get_current_frame()._renderFence, true, 1000000000));
@@ -969,6 +974,34 @@ void VulkanEngine::draw_imgui(VkCommandBuffer cmd, VkImageView targetImageView)
     ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), cmd);
 
     vkCmdEndRendering(cmd);
+}
+
+void VulkanEngine::update_scene()
+{
+	mainDrawContext.OpaqueSurfaces.clear();
+
+	loadedNodes["Suzanne"]->Draw(glm::mat4{1.f}, mainDrawContext);	
+    for (int x = -3; x < 3; x++) 
+    {
+		glm::mat4 scale = glm::scale(glm::vec3{0.2});
+		glm::mat4 translation =  glm::translate(glm::vec3{x, 1, 0});
+
+		loadedNodes["Cube"]->Draw(translation * scale, mainDrawContext);
+	}
+
+	sceneData.view = glm::translate(glm::vec3{ 0,0,-5 });
+	// camera projection
+	sceneData.proj = glm::perspective(glm::radians(70.f), (float)_windowExtent.width / (float)_windowExtent.height, 10000.f, 0.1f);
+
+	// invert the Y direction on projection matrix so that we are more similar
+	// to opengl and gltf axis
+	sceneData.proj[1][1] *= -1;
+	sceneData.viewproj = sceneData.proj * sceneData.view;
+
+	//some default lighting parameters
+	sceneData.ambientColor = glm::vec4(.1f);
+	sceneData.sunlightColor = glm::vec4(1.f);
+	sceneData.sunlightDirection = glm::vec4(0,1,0.5,1.f);
 }
 
 void VulkanEngine::run()
@@ -1344,4 +1377,29 @@ MaterialInstance GLTFMetallic_Roughness::write_material(VkDevice device, Materia
 	writer.update_set(device, matData.materialSet);
 
 	return matData;
+}
+
+
+//MESH------------------------------
+
+void MeshNode::Draw(const glm::mat4 &topMatrix, DrawContext &ctx)
+{
+	glm::mat4 nodeMatrix = topMatrix * worldTransform;
+
+	for (auto& s : mesh->surfaces) 
+    {
+		RenderObject def;
+		def.indexCount = s.count;
+		def.firstIndex = s.startIndex;
+		def.indexBuffer = mesh->meshBuffers.indexBuffer.buffer;
+		def.material = &s.material->data;
+
+		def.transform = nodeMatrix;
+		def.vertexBufferAddress = mesh->meshBuffers.vertexBufferAddress;
+		
+		ctx.OpaqueSurfaces.push_back(def);
+	}
+
+	// recurse down
+	Node::Draw(topMatrix, ctx);
 }
