@@ -4,32 +4,19 @@ WIP Vulkan renderer.
 
 - Current status: working on PBR pipeline.
 
-## Install (Linux)
+## Install (Ubuntu/Debian)
 
-### Ubuntu/Debian
+- Prereqs: GPU driver is installed. (eg. mesa-vulkan-drivers or nvidia-driver)
 
 ```bash
 sudo apt update
 sudo apt install -y build-essential cmake ninja-build pkg-config \
-  libvulkan-dev glslang-tools mesa-vulkan-drivers
+  libvulkan-dev glslang-tools
 ```
 
-### Fedora
+Note: 
+You can also use the official LunarG Vulkan SDK tarball instead of distro Vulkan development packages.
 
-```bash
-sudo dnf install -y gcc-c++ cmake ninja-build pkgconf-pkg-config \
-  vulkan-loader-devel glslang vulkan-tools vulkan-validation-layers
-```
-
-### Arch 
-
-```bash
-sudo pacman -S --needed base-devel cmake ninja pkgconf \
-  vulkan-headers vulkan-icd-loader glslang vulkan-tools
-```
-
-#### Note
-You can also download the offical LunarG Vulkan SDK tarball instead of downloading the Vulkan tools from distro packages. 
 
 ## Build
 
