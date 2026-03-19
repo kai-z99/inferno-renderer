@@ -4,14 +4,23 @@ WIP Vulkan renderer.
 
 - Current status: working on PBR pipeline.
 
-## Install (Ubuntu/Debian)
+## Install (Linux)
 
 - Prereqs: GPU driver is installed. (eg. mesa-vulkan-drivers or nvidia-driver)
 
 ```bash
+# Ubuntu / Debian
 sudo apt update
 sudo apt install -y build-essential cmake ninja-build pkg-config \
   libvulkan-dev glslang-tools
+
+# Fedora
+sudo dnf install -y gcc gcc-c++ make cmake ninja-build pkgconf-pkg-config \
+  vulkan-loader-devel glslang
+
+# Arch Linux
+sudo pacman -Sy --needed base-devel cmake ninja \
+  vulkan-headers vulkan-icd-loader glslang
 ```
 
 Note: 
