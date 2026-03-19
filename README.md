@@ -4,15 +4,7 @@ WIP Vulkan renderer.
 
 - Current status: working on PBR pipeline.
 
-## Install And Build (Linux)
-
-This project builds most third-party libraries, but you still need:
-
-- A C++ toolchain and CMake/Ninja.
-- Vulkan headers/loader 
-- Shader tools
-
-Note: You can also download the offical LunarG Vulkan SDK tarball instead of downloading the Vulkan tools from distro packages. 
+## Install (Linux)
 
 ### Ubuntu/Debian
 
@@ -36,7 +28,8 @@ sudo pacman -S --needed base-devel cmake ninja pkgconf \
   vulkan-headers vulkan-icd-loader glslang vulkan-tools
 ```
 
-
+#### Note
+You can also download the offical LunarG Vulkan SDK tarball instead of downloading the Vulkan tools from distro packages. 
 
 ## Build
 
