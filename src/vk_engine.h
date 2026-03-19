@@ -6,6 +6,7 @@
 #include <vk_types.h>
 #include <vk_descriptors.h>
 #include <vk_loader.h> 
+#include <camera.h>
 
 
 struct DeletionQueue
@@ -47,8 +48,6 @@ struct ComputePushConstants
 	glm::vec4 data3;
 	glm::vec4 data4;
 };
-
-
 
 struct ComputeEffect 
 {
@@ -122,8 +121,6 @@ struct MeshNode : public Node
 	virtual void Draw(const glm::mat4& topMatrix, DrawContext& ctx) override;
 };
 
-
-
 constexpr unsigned int FRAME_OVERLAP = 2;
 
 class VulkanEngine 
@@ -158,7 +155,6 @@ public:
 	VkExtent2D _drawExtent;
 	float renderScale = 1.f;
 	
-
 	//swapchain
 	VkSwapchainKHR _swapchain;
 	VkFormat _swapchainImageFormat;
@@ -195,6 +191,8 @@ public:
 	//scene
 	GPUSceneData sceneData;
 	VkDescriptorSetLayout _gpuSceneDataDescriptorLayout;
+	Camera mainCamera;
+	std::unordered_map<std::string, std::shared_ptr<LoadedGLTF>> loadedScenes;
 	
 	//image
 	AllocatedImage _whiteImage;
@@ -212,6 +210,8 @@ public:
     std::unordered_map<std::string, std::shared_ptr<Node>> loadedNodes;
 
 
+
+
 	//initializes everything in the engine
 	void init();
 
@@ -224,7 +224,9 @@ public:
 	//run main loop
 	void run();
 
-
+	//buffer
+	AllocatedBuffer create_buffer(size_t allocSize, VkBufferUsageFlags usage, VmaMemoryUsage memoryUsage);
+	void destroy_buffer(const AllocatedBuffer& buffer);
 
 private:
 	void init_vulkan();
@@ -248,10 +250,6 @@ private:
 
 	//scene
 	void update_scene();
-
-	//buffer
-	AllocatedBuffer create_buffer(size_t allocSize, VkBufferUsageFlags usage, VmaMemoryUsage memoryUsage);
-	void destroy_buffer(const AllocatedBuffer& buffer);
 
 	//image
 	AllocatedImage create_image(VkExtent3D size, VkFormat format, VkImageUsageFlags usage, bool mipmapped = false);

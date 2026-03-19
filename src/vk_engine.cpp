@@ -63,8 +63,24 @@ void VulkanEngine::init()
 
     init_default_data();
 
+    //init camera
+    mainCamera.velocity = glm::vec3(0.f);
+	mainCamera.position = glm::vec3(0, 0, 5);
+    mainCamera.pitch = 0;
+    mainCamera.yaw = 0;
+
+
+    //init scene
+    std::string structurePath = { "assets/structure.glb" };
+    auto structureFile = loadGltf(this, structurePath);
+
+    assert(structureFile.has_value());
+
+    loadedScenes["structure"] = *structureFile;
+
     // everything went fine
     _isInitialized = true;
+
 
     fmt::print("Initialization complete!\n");
 }
@@ -520,7 +536,7 @@ void VulkanEngine::init_imgui()
 void VulkanEngine::init_default_data()
 {
     // meshes
-    testMeshes = loadGltfMeshes(this, "assets/basicmesh.glb").value();
+    //testMeshes = loadGltfMeshes(this, "assets/basicmesh.glb").value();
 
     //textures
 	//3 default textures, white, grey, black. 1 pixel each
@@ -604,22 +620,22 @@ void VulkanEngine::init_default_data()
 	defaultData = metalRoughMaterial.write_material(_device, MaterialPass::MainColor, materialResources, globalDescriptorAllocator);
 
     //eventually GLTF will do this, but for now apply the default texture to each mesh
-    for (auto& m : testMeshes) 
-    {
-		std::shared_ptr<MeshNode> newNode = std::make_shared<MeshNode>();
-		newNode->mesh = m;
+    // for (auto& m : testMeshes) 
+    // {
+	// 	std::shared_ptr<MeshNode> newNode = std::make_shared<MeshNode>();
+	// 	newNode->mesh = m;
 
-		newNode->localTransform = glm::mat4{ 1.f };
-		newNode->worldTransform = glm::mat4{ 1.f };
+	// 	newNode->localTransform = glm::mat4{ 1.f };
+	// 	newNode->worldTransform = glm::mat4{ 1.f };
 
-        //add our default material to each surface
-		for (auto& s : newNode->mesh->surfaces) 
-        {
-			s.material = std::make_shared<GLTFMaterial>(defaultData);
-		}
+    //     //add our default material to each surface
+	// 	for (auto& s : newNode->mesh->surfaces) 
+    //     {
+	// 		s.material = std::make_shared<GLTFMaterial>(defaultData);
+	// 	}
 
-		loadedNodes[m->name] = std::move(newNode);
-	}
+	// 	loadedNodes[m->name] = std::move(newNode);
+	// }
 
 }
 
@@ -630,6 +646,8 @@ void VulkanEngine::cleanup()
     {
         // make sure gpu is done
         vkDeviceWaitIdle(_device);
+
+        loadedScenes.clear();
 
         // Per frame resources
         for (int i = 0; i < FRAME_OVERLAP; i++)
@@ -646,11 +664,11 @@ void VulkanEngine::cleanup()
             _frames[i]._deletionQueue.flush();
         }
 
-        for (auto &mesh : testMeshes)
-        {
-            destroy_buffer(mesh->meshBuffers.indexBuffer);
-            destroy_buffer(mesh->meshBuffers.vertexBuffer);
-        }
+        // for (auto &mesh : testMeshes)
+        // {
+        //     destroy_buffer(mesh->meshBuffers.indexBuffer);
+        //     destroy_buffer(mesh->meshBuffers.vertexBuffer);
+        // }
 
         _mainDeletionQueue.flush();
 
@@ -908,24 +926,28 @@ void VulkanEngine::update_scene()
 {
 	mainDrawContext.OpaqueSurfaces.clear();
 
-	loadedNodes["Suzanne"]->Draw(glm::rotate(_frameNumber / 20.0f, glm::vec3(0, 1,0)), mainDrawContext);	
+	// loadedNodes["Suzanne"]->Draw(glm::rotate(_frameNumber / 20.0f, glm::vec3(0, 1,0)), mainDrawContext);	
 
-    for (int x = -3; x < 3; x++) 
-    {
-		glm::mat4 scale = glm::scale(glm::vec3{0.2});
-		glm::mat4 translation =  glm::translate(glm::vec3{x, -1, 0});
+    // for (int x = -3; x < 3; x++) 
+    // {
+	// 	glm::mat4 scale = glm::scale(glm::vec3{0.2});
+	// 	glm::mat4 translation =  glm::translate(glm::vec3{x, -1, 0});
 
-		loadedNodes["Cube"]->Draw(translation * scale, mainDrawContext);
-	}
+	// 	loadedNodes["Cube"]->Draw(translation * scale, mainDrawContext);
+	// }
 
-	sceneData.view = glm::translate(glm::vec3{ 0,0,-5 });
-	// camera projection
-	sceneData.proj = glm::perspective(glm::radians(70.f), (float)_windowExtent.width / (float)_windowExtent.height, 10000.f, 0.1f);
+    loadedScenes["structure"]->Draw(glm::mat4{ 1.f }, mainDrawContext);
 
-	// invert the Y direction on projection matrix so that we are more similar
-	// to opengl and gltf axis
-	sceneData.proj[1][1] *= -1;
-	sceneData.viewproj = sceneData.proj * sceneData.view;
+    mainCamera.update();
+
+    glm::mat4 view = mainCamera.getViewMatrix();
+
+    glm::mat4 projection = glm::perspective(glm::radians(70.f), (float)_windowExtent.width / (float)_windowExtent.height, 10000.f, 0.1f);
+    projection[1][1] *= -1;
+
+    sceneData.view = view;
+    sceneData.proj = projection;
+    sceneData.viewproj = projection * view;
 
 	//some default lighting parameters
 	sceneData.ambientColor = glm::vec4(.1f);
@@ -961,6 +983,7 @@ void VulkanEngine::run()
             }
 
             // send SDL event to imgui for handling
+            mainCamera.processSDLEvent(e);
             ImGui_ImplSDL2_ProcessEvent(&e);
         }
 
@@ -1229,8 +1252,8 @@ void GLTFMetallic_Roughness::build_pipelines(VulkanEngine *engine)
     //descriptor set layout for material----------------------------
     DescriptorLayoutBuilder layoutBuilder;
     layoutBuilder.add_binding(0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
-    layoutBuilder.add_binding(1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
-	layoutBuilder.add_binding(2, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
+    layoutBuilder.add_binding(1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER); //albdeo
+	layoutBuilder.add_binding(2, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER); //metal-rough
     //no cleanup for this yet.
     materialLayout = layoutBuilder.build(engine->_device, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT);
 
