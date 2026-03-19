@@ -266,8 +266,9 @@ void VulkanEngine::init_commands()
     VK_CHECK(vkAllocateCommandBuffers(_device, &cmdAllocInfo, &_immCommandBuffer));
 
     _mainDeletionQueue.push_function([=, this]()
-                                     { vkDestroyCommandPool(_device, _immCommandPool, nullptr); });
+        { vkDestroyCommandPool(_device, _immCommandPool, nullptr); });
 }
+
 void VulkanEngine::init_sync_structures()
 {
     fmt::print("Initializing sync...\n");
@@ -304,7 +305,7 @@ void VulkanEngine::init_descriptors()
     };
     globalDescriptorAllocator.init(_device, 10, sizes); //10 sets can be allocated  from this one
 
-    //  COMPUTE PIPELINE: make the descriptor set layout for our compute draw
+    // COMPUTE PIPELINE: make the descriptor set layout for our compute draw
     {
         DescriptorLayoutBuilder builder;
         builder.add_binding(0, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE); // binding index 0 of the desciptor set being described holds an image
@@ -373,6 +374,7 @@ void VulkanEngine::init_pipelines()
 void VulkanEngine::init_background_pipelines()
 {
     fmt::print("Initializing BG pipelines...\n"); // “Shaders in this pipeline will look for resources in set N, binding M with these types.”
+
     //--------1. describe the data layout with out descriptor table to our pipeline -------------
     VkPipelineLayoutCreateInfo computeLayout{};
     computeLayout.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
@@ -597,9 +599,11 @@ void VulkanEngine::init_default_data()
 	materialResources.dataBuffer = materialConstants.buffer;
 	materialResources.dataBufferOffset = 0;
 
+    //create the material instance from the MaterialResources
+    //note the descriptor layout is already created in the pipeline init, so we really jsut needed the resources to update those bindings.
 	defaultData = metalRoughMaterial.write_material(_device, MaterialPass::MainColor, materialResources, globalDescriptorAllocator);
 
-    //eventually GLTF will do this 
+    //eventually GLTF will do this, but for now apply the default texture to each mesh
     for (auto& m : testMeshes) 
     {
 		std::shared_ptr<MeshNode> newNode = std::make_shared<MeshNode>();
@@ -744,7 +748,7 @@ void VulkanEngine::draw_geometry(VkCommandBuffer cmd)
 	writer.update_set(_device, globalDescriptor); //tell desciptor that index 0 is our UBO
     //-------------------------------------------------------------------------------------------------------
     //(we havent bound it yet)
-
+    
     // draw all meshes (RenderObjects)
     // note calling MeshNode::Draw in update() fills mainDrawContext with RenderObjects 
     for (const RenderObject& draw : mainDrawContext.OpaqueSurfaces)
@@ -752,8 +756,10 @@ void VulkanEngine::draw_geometry(VkCommandBuffer cmd)
         //bind pipeline of render object
 		vkCmdBindPipeline(cmd,VK_PIPELINE_BIND_POINT_GRAPHICS, draw.material->pipeline->pipeline);
 
-        //bind descriptor sets from the RenderObject's MaterialInstance
+        //bind descriptor sets from the RenderObject's MaterialInstance------------------------
+        // per frame
 		vkCmdBindDescriptorSets(cmd,VK_PIPELINE_BIND_POINT_GRAPHICS, draw.material->pipeline->layout, 0,1, &globalDescriptor,0,nullptr );
+        //per object (material)                                                                               MaterialInstance has desc set
 		vkCmdBindDescriptorSets(cmd,VK_PIPELINE_BIND_POINT_GRAPHICS, draw.material->pipeline->layout, 1,1, &draw.material->materialSet,0,nullptr );
 
 		vkCmdBindIndexBuffer(cmd, draw.indexBuffer,0,VK_INDEX_TYPE_UINT32);
@@ -902,11 +908,12 @@ void VulkanEngine::update_scene()
 {
 	mainDrawContext.OpaqueSurfaces.clear();
 
-	loadedNodes["Suzanne"]->Draw(glm::mat4{1.f}, mainDrawContext);	
+	loadedNodes["Suzanne"]->Draw(glm::rotate(_frameNumber / 20.0f, glm::vec3(0, 1,0)), mainDrawContext);	
+
     for (int x = -3; x < 3; x++) 
     {
 		glm::mat4 scale = glm::scale(glm::vec3{0.2});
-		glm::mat4 translation =  glm::translate(glm::vec3{x, 1, 0});
+		glm::mat4 translation =  glm::translate(glm::vec3{x, -1, 0});
 
 		loadedNodes["Cube"]->Draw(translation * scale, mainDrawContext);
 	}
