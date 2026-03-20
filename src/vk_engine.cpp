@@ -71,7 +71,7 @@ void VulkanEngine::init()
 
 
     //init scene
-    std::string structurePath = { "assets/structure.glb" };
+    std::string structurePath = { "assets/main_sponza/NewSponza_Main_glTF_003.gltf" };
     auto structureFile = loadGltf(this, structurePath);
 
     assert(structureFile.has_value());
@@ -586,57 +586,6 @@ void VulkanEngine::init_default_data()
 		destroy_image(_blackImage);
 		destroy_image(_errorCheckerboardImage);
 	});
-
-
-    //---------------------------------------------------------------------------------------
-    //create a default white material for the gltf roughness pipeline-------------------------
-    //---------------------------------------------------------------------------------------
-    //albedo texture/sampler, metalrough texture/sampler, MaterialConstants (metalrough/albedo constant)
-    GLTFMetallic_Roughness::MaterialResources materialResources;
-
-	//default the material textures
-	materialResources.colorImage = _whiteImage;
-	materialResources.colorSampler = _defaultSamplerLinear;
-	materialResources.metalRoughImage = _whiteImage;
-	materialResources.metalRoughSampler = _defaultSamplerLinear;
-    //stil need  materialResources.dataBuffer
-
-	//write the uniform buffer for the material data (materialResources.dataBuffer)
-	AllocatedBuffer materialConstants = create_buffer(sizeof(GLTFMetallic_Roughness::MaterialConstants), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
-	GLTFMetallic_Roughness::MaterialConstants* sceneUniformData = (GLTFMetallic_Roughness::MaterialConstants*)materialConstants.allocation->GetMappedData();
-	sceneUniformData->colorFactors = glm::vec4{1,1,1,1};
-	sceneUniformData->metal_rough_factors = glm::vec4{1,0.5,0,0};
-
-	_mainDeletionQueue.push_function([=, this]() 
-    {
-		destroy_buffer(materialConstants);
-	});
-
-	materialResources.dataBuffer = materialConstants.buffer;
-	materialResources.dataBufferOffset = 0;
-
-    //create the material instance from the MaterialResources
-    //note the descriptor layout is already created in the pipeline init, so we really jsut needed the resources to update those bindings.
-	defaultData = metalRoughMaterial.write_material(_device, MaterialPass::MainColor, materialResources, globalDescriptorAllocator);
-
-    //eventually GLTF will do this, but for now apply the default texture to each mesh
-    // for (auto& m : testMeshes) 
-    // {
-	// 	std::shared_ptr<MeshNode> newNode = std::make_shared<MeshNode>();
-	// 	newNode->mesh = m;
-
-	// 	newNode->localTransform = glm::mat4{ 1.f };
-	// 	newNode->worldTransform = glm::mat4{ 1.f };
-
-    //     //add our default material to each surface
-	// 	for (auto& s : newNode->mesh->surfaces) 
-    //     {
-	// 		s.material = std::make_shared<GLTFMaterial>(defaultData);
-	// 	}
-
-	// 	loadedNodes[m->name] = std::move(newNode);
-	// }
-
 }
 
 void VulkanEngine::cleanup()
@@ -747,41 +696,46 @@ void VulkanEngine::draw_geometry(VkCommandBuffer cmd)
     //allocate a new UBO for the scene data
 	AllocatedBuffer gpuSceneDataBuffer = create_buffer(sizeof(GPUSceneData), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
 
-	//add it to the deletion queue of this frame so it gets deleted once its been used
+    //write the UBO with our cpu data
+	GPUSceneData* sceneUniformData = (GPUSceneData*)gpuSceneDataBuffer.allocation->GetMappedData(); //get cpu pointer to buffer mem
+	*sceneUniformData = sceneData; //set buffer mem to our cpu side scene data. this is updated in update_scene()
+
 	get_current_frame()._deletionQueue.push_function([=, this]() 
     {
 		destroy_buffer(gpuSceneDataBuffer);
 	});
 
-	//write the UBO with our cpu data
-	GPUSceneData* sceneUniformData = (GPUSceneData*)gpuSceneDataBuffer.allocation->GetMappedData(); //get cpu pointer to buffer mem
-	*sceneUniformData = sceneData; //set buffer mem to our cpu side scene data. this is updated in update_scene()
-
-	//create a descriptor set (from layout we described in setup), bind that buffer and update it
+	//create a descriptor set (from layout for per frame data we described in setup)
 	VkDescriptorSet globalDescriptor = get_current_frame()._frameDescriptors.allocate(_device, _gpuSceneDataDescriptorLayout);
+
 	DescriptorWriter writer;
-    //bind our ubo to index 0, as the desciptor set layout was binded.
-    //note this index must match dstBinding in the layout's VkWriteDescriptorSet. (and match descriptorType (in this case UBO, etc)
+    //bind our buffer data to binding 0 of that descriptor set.
+    //             binding 0                                              set 0
 	writer.write_buffer(0, gpuSceneDataBuffer.buffer, sizeof(GPUSceneData), 0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER); 
-	writer.update_set(_device, globalDescriptor); //tell desciptor that index 0 is our UBO
+	writer.update_set(_device, globalDescriptor); 
     //-------------------------------------------------------------------------------------------------------
-    //(we havent bound it yet)
     
     // draw all meshes (RenderObjects)
     // note calling MeshNode::Draw in update() fills mainDrawContext with RenderObjects 
     auto draw = [&](const RenderObject& draw) 
     {
+        //bind pipeline and descriptor-------------------------------------------------------------------------
+        //no need to update descriptor sets with write_buffer/image and update_set because this data doesnt change.
         vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, draw.material->pipeline->pipeline);
         vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, draw.material->pipeline->layout, 0, 1, &globalDescriptor, 0, nullptr);
+        //this VkDescriptorSet (&draw.material->materialSet) holds the unique textures of the surface
         vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, draw.material->pipeline->layout, 1, 1, &draw.material->materialSet, 0, nullptr);
 
+        //bind index buffer
         vkCmdBindIndexBuffer(cmd, draw.indexBuffer, 0, VK_INDEX_TYPE_UINT32);
 
+        //bind push constants
         GPUDrawPushConstants pushConstants;
         pushConstants.vertexBuffer = draw.vertexBufferAddress;
         pushConstants.worldMatrix = draw.transform;
         vkCmdPushConstants(cmd, draw.material->pipeline->layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(GPUDrawPushConstants), &pushConstants);
 
+        //draw
         vkCmdDrawIndexed(cmd, draw.indexCount, 1, draw.firstIndex, 0, 0);
     };
 
@@ -1260,16 +1214,16 @@ void GLTFMetallic_Roughness::build_pipelines(VulkanEngine *engine)
     //create the pipeline layout with our push constants/descriptor layouts
 	VkPipelineLayoutCreateInfo mesh_layout_info = vkinit::pipeline_layout_create_info();
 	mesh_layout_info.setLayoutCount = 2; //2 descriptor sets for this pipeline. (one for material, one for per-frame)
-	mesh_layout_info.pSetLayouts = layouts;
+	mesh_layout_info.pSetLayouts = layouts; //specify what 2 sets
 	mesh_layout_info.pPushConstantRanges = &matrixRange; //push constants are for per-object like worldMatrix
 	mesh_layout_info.pushConstantRangeCount = 1;
-	VkPipelineLayout newLayout;
-	VK_CHECK(vkCreatePipelineLayout(engine->_device, &mesh_layout_info, nullptr, &newLayout));
+	VkPipelineLayout meshPipelineLayout;
+	VK_CHECK(vkCreatePipelineLayout(engine->_device, &mesh_layout_info, nullptr, &meshPipelineLayout));
 
     //both pipelines will use the same layout.
     //no cleanup for these guys yet
-    opaquePipeline.layout = newLayout;
-    transparentPipeline.layout = newLayout;
+    opaquePipeline.layout = meshPipelineLayout;
+    transparentPipeline.layout = meshPipelineLayout;
 
 	// build the stage-create-info for both vertex and fragment stages. This lets
 	// the pipeline know the shader modules per stage
@@ -1287,7 +1241,7 @@ void GLTFMetallic_Roughness::build_pipelines(VulkanEngine *engine)
 	pipelineBuilder.set_depth_format(engine->_depthImage.imageFormat);
 
 	// use the layout we created
-	pipelineBuilder._pipelineLayout = newLayout;
+	pipelineBuilder._pipelineLayout = meshPipelineLayout;
 
 	// finally build the pipeline
     opaquePipeline.pipeline = pipelineBuilder.build_pipeline(engine->_device);
@@ -1301,12 +1255,32 @@ void GLTFMetallic_Roughness::build_pipelines(VulkanEngine *engine)
 	
 	vkDestroyShaderModule(engine->_device, meshFragShader, nullptr);
 	vkDestroyShaderModule(engine->_device, meshVertexShader, nullptr);
+
+    //cleanup
+    engine->_mainDeletionQueue.push_function([=, this]()
+    { 
+        vkDestroyPipelineLayout(engine->_device, meshPipelineLayout, nullptr);
+        vkDestroyPipeline(engine->_device, transparentPipeline.pipeline, nullptr);
+        vkDestroyPipeline(engine->_device, opaquePipeline.pipeline, nullptr);
+        vkDestroyDescriptorSetLayout(engine->_device, materialLayout, nullptr);
+    });
+
+
+}
+
+void GLTFMetallic_Roughness::clear_resources(VkDevice device)
+{
+
 }
 
 MaterialInstance GLTFMetallic_Roughness::write_material(VkDevice device, MaterialPass pass, const MaterialResources &resources, DescriptorAllocatorGrowable &descriptorAllocator)
 {
     MaterialInstance matData;
+
+    //PASS TYPE-----------------------------------------------------
 	matData.passType = pass;
+
+    //PIPELINE-----------------------------------------------------
 	if (pass == MaterialPass::Transparent) 
     {
 		matData.pipeline = &transparentPipeline;
@@ -1315,8 +1289,8 @@ MaterialInstance GLTFMetallic_Roughness::write_material(VkDevice device, Materia
     {
 		matData.pipeline = &opaquePipeline;
 	}
-    //allocate descriptor set for material
-    //note: the descriptor set for per frame resources will be created duing the render loop.
+    
+    //DESCRIPTOR SET--------------------------------------------------
 	matData.materialSet = descriptorAllocator.allocate(device, materialLayout);
 
 	writer.clear();

@@ -91,7 +91,7 @@ struct GLTFMetallic_Roughness
 	void build_pipelines(VulkanEngine* engine);
 	void clear_resources(VkDevice device);
 
-	//Build descriptor sets from materialLayout and bind resources from MaterialResources
+	//Return a MaterialInstance, which holds pipeline, descriptor set and pass associated with the material.
 	MaterialInstance write_material(VkDevice device, MaterialPass pass, const MaterialResources& resources, DescriptorAllocatorGrowable& descriptorAllocator);
 };
 
@@ -204,7 +204,6 @@ public:
 	VkSampler _defaultSamplerNearest;
 
 	//material
-	MaterialInstance defaultData;
 	GLTFMetallic_Roughness metalRoughMaterial;
 
 	DrawContext mainDrawContext;

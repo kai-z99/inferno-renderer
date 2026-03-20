@@ -48,7 +48,8 @@ VkSamplerMipmapMode extract_mipmap_mode(fastgltf::Filter filter)
 }
 
 //https://vkguide.dev/docs/new_chapter_5/gltf_textures/
-std::optional<AllocatedImage> load_image(VulkanEngine* engine, fastgltf::Asset& asset, fastgltf::Image& image)
+//modified for linux file path
+std::optional<AllocatedImage> load_image(VulkanEngine* engine, fastgltf::Asset& asset, fastgltf::Image& image, const std::filesystem::path& assetDirectory)
 {
     AllocatedImage newImage {};
 
@@ -63,9 +64,10 @@ std::optional<AllocatedImage> load_image(VulkanEngine* engine, fastgltf::Asset& 
                 assert(filePath.uri.isLocalPath()); // We're only capable of loading
                                                     // local files.
 
-                const std::string path(filePath.uri.path().begin(),
+                const std::string localPath(filePath.uri.path().begin(),
                     filePath.uri.path().end()); // Thanks C++.
-                unsigned char* data = stbi_load(path.c_str(), &width, &height, &nrChannels, 4);
+                const std::filesystem::path resolvedPath = assetDirectory / std::filesystem::path(localPath);
+                unsigned char* data = stbi_load(resolvedPath.string().c_str(), &width, &height, &nrChannels, 4);
                 if (data) {
                     VkExtent3D imagesize;
                     imagesize.width = width;
@@ -221,7 +223,7 @@ std::optional<std::shared_ptr<LoadedGLTF>> loadGltf(VulkanEngine *engine, std::f
     // load all textures
 	for (fastgltf::Image& image : gltf.images) 
     {
-		std::optional<AllocatedImage> img = load_image(engine, gltf, image);
+		std::optional<AllocatedImage> img = load_image(engine, gltf, image, path.parent_path());
 
 		if (img.has_value()) 
         {
@@ -294,14 +296,37 @@ std::optional<std::shared_ptr<LoadedGLTF>> loadGltf(VulkanEngine *engine, std::f
         materialResources.dataBuffer = file.materialDataBuffer.buffer;
         materialResources.dataBufferOffset = data_index * sizeof(GLTFMetallic_Roughness::MaterialConstants); //take a portion of all the material constant buffer
         
-        // grab textures from gltf file
+        // grab textures from gltf file if they exist
+        // base color
         if (mat.pbrData.baseColorTexture.has_value()) 
         {
-            size_t img = gltf.textures[mat.pbrData.baseColorTexture.value().textureIndex].imageIndex.value();
-            size_t sampler = gltf.textures[mat.pbrData.baseColorTexture.value().textureIndex].samplerIndex.value();
+            const auto texIndex = mat.pbrData.baseColorTexture->textureIndex;
+            const auto& tex = gltf.textures[texIndex];
 
-            materialResources.colorImage = images[img];
-            materialResources.colorSampler = file.samplers[sampler];
+            if (tex.imageIndex.has_value()) 
+            {
+                materialResources.colorImage = images[*tex.imageIndex];
+            }
+            if (tex.samplerIndex.has_value()) 
+            {
+                materialResources.colorSampler = file.samplers[*tex.samplerIndex];
+            }
+        }
+
+        // metallic-roughness
+        if (mat.pbrData.metallicRoughnessTexture.has_value()) 
+        {
+            const auto texIndex = mat.pbrData.metallicRoughnessTexture->textureIndex;
+            const auto& tex = gltf.textures[texIndex];
+
+            if (tex.imageIndex.has_value()) 
+            {
+                materialResources.metalRoughImage = images[*tex.imageIndex];
+            }
+            if (tex.samplerIndex.has_value()) 
+            {
+                materialResources.metalRoughSampler = file.samplers[*tex.samplerIndex];
+            }
         }
         //------------------------------------------------------------------------------------------------
 
@@ -530,7 +555,7 @@ void LoadedGLTF::clearAll()
         {
             continue;
         }
-        
+
         creator->destroy_image(v);
     }
 
