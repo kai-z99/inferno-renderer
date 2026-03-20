@@ -755,7 +755,7 @@ void VulkanEngine::draw_geometry(VkCommandBuffer cmd)
 
 	//write the UBO with our cpu data
 	GPUSceneData* sceneUniformData = (GPUSceneData*)gpuSceneDataBuffer.allocation->GetMappedData(); //get cpu pointer to buffer mem
-	*sceneUniformData = sceneData; //set buffer mem to our cpu side scene data. this is updated in update_scene
+	*sceneUniformData = sceneData; //set buffer mem to our cpu side scene data. this is updated in update_scene()
 
 	//create a descriptor set (from layout we described in setup), bind that buffer and update it
 	VkDescriptorSet globalDescriptor = get_current_frame()._frameDescriptors.allocate(_device, _gpuSceneDataDescriptorLayout);
@@ -769,26 +769,33 @@ void VulkanEngine::draw_geometry(VkCommandBuffer cmd)
     
     // draw all meshes (RenderObjects)
     // note calling MeshNode::Draw in update() fills mainDrawContext with RenderObjects 
-    for (const RenderObject& draw : mainDrawContext.OpaqueSurfaces)
+    auto draw = [&](const RenderObject& draw) 
     {
-        //bind pipeline of render object
-		vkCmdBindPipeline(cmd,VK_PIPELINE_BIND_POINT_GRAPHICS, draw.material->pipeline->pipeline);
+        vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, draw.material->pipeline->pipeline);
+        vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, draw.material->pipeline->layout, 0, 1, &globalDescriptor, 0, nullptr);
+        vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, draw.material->pipeline->layout, 1, 1, &draw.material->materialSet, 0, nullptr);
 
-        //bind descriptor sets from the RenderObject's MaterialInstance------------------------
-        // per frame
-		vkCmdBindDescriptorSets(cmd,VK_PIPELINE_BIND_POINT_GRAPHICS, draw.material->pipeline->layout, 0,1, &globalDescriptor,0,nullptr );
-        //per object (material)                                                                               MaterialInstance has desc set
-		vkCmdBindDescriptorSets(cmd,VK_PIPELINE_BIND_POINT_GRAPHICS, draw.material->pipeline->layout, 1,1, &draw.material->materialSet,0,nullptr );
+        vkCmdBindIndexBuffer(cmd, draw.indexBuffer, 0, VK_INDEX_TYPE_UINT32);
 
-		vkCmdBindIndexBuffer(cmd, draw.indexBuffer,0,VK_INDEX_TYPE_UINT32);
+        GPUDrawPushConstants pushConstants;
+        pushConstants.vertexBuffer = draw.vertexBufferAddress;
+        pushConstants.worldMatrix = draw.transform;
+        vkCmdPushConstants(cmd, draw.material->pipeline->layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(GPUDrawPushConstants), &pushConstants);
 
-		GPUDrawPushConstants pushConstants;
-		pushConstants.vertexBuffer = draw.vertexBufferAddress;
-		pushConstants.worldMatrix = draw.transform;
-		vkCmdPushConstants(cmd,draw.material->pipeline->layout ,VK_SHADER_STAGE_VERTEX_BIT,0, sizeof(GPUDrawPushConstants), &pushConstants);
+        vkCmdDrawIndexed(cmd, draw.indexCount, 1, draw.firstIndex, 0, 0);
+    };
 
-		vkCmdDrawIndexed(cmd,draw.indexCount,1,draw.firstIndex,0,0);
-	}
+    for (auto& r : mainDrawContext.OpaqueSurfaces) 
+    {
+        //fmt::print("????\n");
+        draw(r);
+    }
+
+    for (auto& r : mainDrawContext.TransparentSurfaces) 
+    {
+        //fmt::print("!!!!!\n");
+        draw(r);
+    }
     vkCmdEndRendering(cmd);
 }
 
@@ -925,31 +932,20 @@ void VulkanEngine::draw_imgui(VkCommandBuffer cmd, VkImageView targetImageView)
 void VulkanEngine::update_scene()
 {
 	mainDrawContext.OpaqueSurfaces.clear();
-
-	// loadedNodes["Suzanne"]->Draw(glm::rotate(_frameNumber / 20.0f, glm::vec3(0, 1,0)), mainDrawContext);	
-
-    // for (int x = -3; x < 3; x++) 
-    // {
-	// 	glm::mat4 scale = glm::scale(glm::vec3{0.2});
-	// 	glm::mat4 translation =  glm::translate(glm::vec3{x, -1, 0});
-
-	// 	loadedNodes["Cube"]->Draw(translation * scale, mainDrawContext);
-	// }
+    mainDrawContext.TransparentSurfaces.clear();
 
     loadedScenes["structure"]->Draw(glm::mat4{ 1.f }, mainDrawContext);
 
     mainCamera.update();
 
     glm::mat4 view = mainCamera.getViewMatrix();
-
     glm::mat4 projection = glm::perspective(glm::radians(70.f), (float)_windowExtent.width / (float)_windowExtent.height, 10000.f, 0.1f);
     projection[1][1] *= -1;
 
+    //update per frame data
     sceneData.view = view;
     sceneData.proj = projection;
     sceneData.viewproj = projection * view;
-
-	//some default lighting parameters
 	sceneData.ambientColor = glm::vec4(.1f);
 	sceneData.sunlightColor = glm::vec4(1.f);
 	sceneData.sunlightDirection = glm::vec4(0,1,0.5,1.f);
@@ -1344,15 +1340,22 @@ void MeshNode::Draw(const glm::mat4 &topMatrix, DrawContext &ctx)
 	for (auto& s : mesh->surfaces) 
     {
 		RenderObject def;
+
 		def.indexCount = s.count;
 		def.firstIndex = s.startIndex;
 		def.indexBuffer = mesh->meshBuffers.indexBuffer.buffer;
 		def.material = &s.material->data;
-
 		def.transform = nodeMatrix;
 		def.vertexBufferAddress = mesh->meshBuffers.vertexBufferAddress;
-		
-		ctx.OpaqueSurfaces.push_back(def);
+        
+		if (s.material->data.passType == MaterialPass::Transparent) 
+        {
+            ctx.TransparentSurfaces.push_back(def);
+        } 
+        else 
+        {
+            ctx.OpaqueSurfaces.push_back(def);
+        }
 	}
 
 	// recurse down
