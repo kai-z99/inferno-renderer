@@ -71,7 +71,7 @@ void VulkanEngine::init()
 
 
     //init scene
-    std::string structurePath = { "assets/main_sponza/NewSponza_Main_glTF_003.gltf" };
+    std::string structurePath = { "assets/structure.glb" };
     auto structureFile = loadGltf(this, structurePath);
 
     assert(structureFile.has_value());
