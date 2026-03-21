@@ -47,8 +47,29 @@ VkSamplerMipmapMode extract_mipmap_mode(fastgltf::Filter filter)
     }
 }
 
+std::optional<std::size_t> resolve_texture_image_index(const fastgltf::Texture& texture)
+{
+    if (texture.imageIndex.has_value()) 
+    {
+        return texture.imageIndex.value();
+    }
+    if (texture.webpImageIndex.has_value()) 
+    {
+        return texture.webpImageIndex.value();
+    }
+    if (texture.ddsImageIndex.has_value()) 
+    {
+        return texture.ddsImageIndex.value();
+    }
+    if (texture.basisuImageIndex.has_value()) 
+    {
+        return texture.basisuImageIndex.value();
+    }
+    return {};
+}
+
 //https://vkguide.dev/docs/new_chapter_5/gltf_textures/
-//modified for linux file path
+//modified to run at relative to repo root, and to support ByteView 
 std::optional<AllocatedImage> load_image(VulkanEngine* engine, fastgltf::Asset& asset, fastgltf::Image& image, const std::filesystem::path& assetDirectory)
 {
     AllocatedImage newImage {};
@@ -94,14 +115,28 @@ std::optional<AllocatedImage> load_image(VulkanEngine* engine, fastgltf::Asset& 
                     stbi_image_free(data);
                 }
             },
-            // case 3: image file is embedded into the binary GLB file.
+            // case 3: image bytes are already provided as a view.
+            [&](fastgltf::sources::ByteView& byteView) {
+                unsigned char* data = stbi_load_from_memory(
+                    reinterpret_cast<const stbi_uc*>(byteView.bytes.data()),
+                    static_cast<int>(byteView.bytes.size()), &width, &height, &nrChannels, 4);
+                if (data) {
+                    VkExtent3D imagesize;
+                    imagesize.width = width;
+                    imagesize.height = height;
+                    imagesize.depth = 1;
+
+                    newImage = engine->create_image(data, imagesize, VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_USAGE_SAMPLED_BIT, false);
+
+                    stbi_image_free(data);
+                }
+            },
+            // case 4: image file is embedded into a buffer view (common in GLB files).
             [&](fastgltf::sources::BufferView& view) {
                 auto& bufferView = asset.bufferViews[view.bufferViewIndex];
                 auto& buffer = asset.buffers[bufferView.bufferIndex];
 
-                std::visit(fastgltf::visitor { // We only care about VectorWithMime here, because we
-                                               // specify LoadExternalBuffers, meaning all buffers
-                                               // are already loaded into a vector.
+                std::visit(fastgltf::visitor {
                                [](auto& arg) {},
                                [&](fastgltf::sources::Vector& vector) {
                                    unsigned char* data = stbi_load_from_memory(vector.bytes.data() + bufferView.byteOffset,
@@ -115,6 +150,23 @@ std::optional<AllocatedImage> load_image(VulkanEngine* engine, fastgltf::Asset& 
 
                                        newImage = engine->create_image(data, imagesize, VK_FORMAT_R8G8B8A8_UNORM,
                                            VK_IMAGE_USAGE_SAMPLED_BIT,false);
+
+                                       stbi_image_free(data);
+                                   }
+                               },
+                               [&](fastgltf::sources::ByteView& byteView) {
+                                   auto* start = reinterpret_cast<const stbi_uc*>(byteView.bytes.data()) + bufferView.byteOffset;
+                                   unsigned char* data = stbi_load_from_memory(start,
+                                       static_cast<int>(bufferView.byteLength),
+                                       &width, &height, &nrChannels, 4);
+                                   if (data) {
+                                       VkExtent3D imagesize;
+                                       imagesize.width = width;
+                                       imagesize.height = height;
+                                       imagesize.depth = 1;
+
+                                       newImage = engine->create_image(data, imagesize, VK_FORMAT_R8G8B8A8_UNORM,
+                                           VK_IMAGE_USAGE_SAMPLED_BIT, false);
 
                                        stbi_image_free(data);
                                    }
@@ -303,9 +355,9 @@ std::optional<std::shared_ptr<LoadedGLTF>> loadGltf(VulkanEngine *engine, std::f
             const auto texIndex = mat.pbrData.baseColorTexture->textureIndex;
             const auto& tex = gltf.textures[texIndex];
 
-            if (tex.imageIndex.has_value()) 
+            if (auto imageIndex = resolve_texture_image_index(tex); imageIndex.has_value()) 
             {
-                materialResources.colorImage = images[*tex.imageIndex];
+                materialResources.colorImage = images[*imageIndex];
             }
             if (tex.samplerIndex.has_value()) 
             {
@@ -319,9 +371,9 @@ std::optional<std::shared_ptr<LoadedGLTF>> loadGltf(VulkanEngine *engine, std::f
             const auto texIndex = mat.pbrData.metallicRoughnessTexture->textureIndex;
             const auto& tex = gltf.textures[texIndex];
 
-            if (tex.imageIndex.has_value()) 
+            if (auto imageIndex = resolve_texture_image_index(tex); imageIndex.has_value()) 
             {
-                materialResources.metalRoughImage = images[*tex.imageIndex];
+                materialResources.metalRoughImage = images[*imageIndex];
             }
             if (tex.samplerIndex.has_value()) 
             {
