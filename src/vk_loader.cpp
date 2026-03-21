@@ -136,7 +136,7 @@ std::optional<AllocatedImage> load_image(VulkanEngine* engine, fastgltf::Asset& 
 
 std::optional<std::shared_ptr<LoadedGLTF>> loadGltf(VulkanEngine *engine, std::filesystem::path filePath)
 {
-    fmt::print("Loading GLTF: {}\n", filePath.c_str());
+    fmt::print("Loading GLTF: {}\n", filePath.string());
 
     std::shared_ptr<LoadedGLTF> scene = std::make_shared<LoadedGLTF>();
     scene->creator = engine;
