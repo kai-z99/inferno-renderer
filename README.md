@@ -26,12 +26,7 @@ sudo pacman -Sy --needed base-devel cmake ninja \
 Note: 
 You can also use the official LunarG Vulkan SDK tarball instead of distro Vulkan development packages.
 
-## Install (Windows)
-- Use the CMake GUI to configure and generate the .sln file.
-- Open the .sln with VS, then click "Build Solution". 
-
-
-## Build
+## Build (Linux)
 
 From the repository root:
 
@@ -39,10 +34,28 @@ From the repository root:
 ./build.sh
 ```
 
-## Run
+## Run (Linux)
 
 From the repository root:
 
 ```bash
 ./bin/engine
 ```
+
+
+## Install/Build (Windows)
+- Install the Vulkan SDK
+- In the CMake GUI, set source code path to:
+```bash
+path/to/inferno-renderer
+```
+- Set "Where to build binaries" to:
+```bash
+path/to/inferno-renderer/build
+```
+- Click "Configure", then click "Generate" to create the .sln file.
+- Open the .sln with VS, then click "Build Solution".
+
+## Run (Windows)
+- Set "engine" as the startup project in VS.
+- Click the run button.
