@@ -26,6 +26,10 @@ sudo pacman -Sy --needed base-devel cmake ninja \
 Note: 
 You can also use the official LunarG Vulkan SDK tarball instead of distro Vulkan development packages.
 
+## Install (Windows)
+- Use the CMake GUI to configure and generate the .sln file.
+- Open the .sln with VS, then click "Build Solution". 
+
 
 ## Build
 
