@@ -136,3 +136,12 @@ struct Node : public IRenderable
         }
     }
 };
+
+struct EngineStats
+{
+    float frametime;
+    int triangle_count;
+    int drawcall_count;
+    float scene_update_time;
+    float mesh_draw_time;
+};

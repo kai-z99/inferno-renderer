@@ -209,6 +209,8 @@ public:
 	DrawContext mainDrawContext;
     std::unordered_map<std::string, std::shared_ptr<Node>> loadedNodes;
 
+	//stats
+	EngineStats stats;
 
 
 	//initializes everything in the engine
