@@ -23,8 +23,43 @@
 #include <chrono>
 #include <thread>
 
-static AutoCVar_Float cvarRenderScale("r.renderScale", "Internal render scale", 1.0, CVarFlags::EditFloatDrag);
-static AutoCVar_Int cvarBackgroundEffect("r.backgroundEffect", "Background effect index", 0);
+static AutoCVar_Float cvarRenderScale(
+    "r.renderScale",
+    "Internal render scale",
+    1.0,
+    FloatCVarOptions{
+        .minValue = 0.3,
+        .maxValue = 1.0,
+        .step = 0.01f,
+        .format = "%.2f",
+    },
+    CVarEditHint::TextBox);
+
+static AutoCVar_Int cvarBackgroundEffect(
+    "r.backgroundEffect",
+    "Background effect index",
+    0,
+    IntCVarOptions{
+        .minValue = 0,
+        .maxValue = 1,
+        .step = 1,
+        .format = "%i",
+    },
+    CVarEditHint::Checkbox);
+
+static AutoCVar_Vec3 cvarSunDir(
+    "r.sun.direction",
+    "Sun light direction",
+    glm::vec3(0.0f, 1.0f, 0.5f),
+    Vec3CVarOptions{
+        .minValue = -1.0f,
+        .maxValue = 1.0f,
+        .step = 0.01f,
+        .format = "%.3f",
+    },
+    CVarEditHint::Drag
+);
+
 
 VulkanEngine *loadedEngine = nullptr;
 
@@ -698,8 +733,7 @@ void VulkanEngine::draw_background(VkCommandBuffer cmd)
         return;
     }
 
-    int effectIndex = std::clamp(cvarBackgroundEffect.Get(), 0, (int)backgroundEffects.size() - 1);
-    cvarBackgroundEffect.Set(effectIndex);
+    int effectIndex = cvarBackgroundEffect.Get();
     currentBackgroundEffect = effectIndex;
 
     VkClearColorValue clearValue;
@@ -918,8 +952,6 @@ void VulkanEngine::draw()
     //basically the min is there so the draw image extent never goes above the drawImage's actual size.
     //(renderscale <= 1)
     float renderScale = cvarRenderScale.GetFloat();
-    renderScale = std::clamp(renderScale, 0.3f, 1.0f);
-    cvarRenderScale.Set(renderScale);
 
     _drawExtent.height = std::min(_swapchainExtent.height, _drawImage.imageExtent.height) * renderScale;
     _drawExtent.width = std::min(_swapchainExtent.width, _drawImage.imageExtent.width) * renderScale;
@@ -1102,13 +1134,6 @@ void VulkanEngine::run()
         ImGui_ImplVulkan_NewFrame();
         ImGui_ImplSDL2_NewFrame();
         ImGui::NewFrame();
-
-        if (!backgroundEffects.empty())
-        {
-            int effectIndex = std::clamp(cvarBackgroundEffect.Get(), 0, (int)backgroundEffects.size() - 1);
-            cvarBackgroundEffect.Set(effectIndex);
-            currentBackgroundEffect = effectIndex;
-        }
 
         ImGui::Begin("Stats");
 
