@@ -62,7 +62,7 @@ private:
 };
 
 
-//easily make and use VkWriteDescriptorSet to update descriptor set bindings
+//easily use VkWriteDescriptorSet to update existing descriptor set bindings
 struct DescriptorWriter 
 {
     std::deque<VkDescriptorImageInfo> imageInfos;

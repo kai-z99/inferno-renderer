@@ -291,6 +291,7 @@ std::optional<std::shared_ptr<LoadedGLTF>> loadGltf(VulkanEngine *engine, std::f
 	}
 
      // create buffer to hold all the material CONSTANTS
+     // these are part of the gltf pbr standard
     file.materialDataBuffer = engine->create_buffer(sizeof(GLTFMetallic_Roughness::MaterialConstants) * gltf.materials.size(),
         VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
     int data_index = 0;
@@ -385,6 +386,7 @@ std::optional<std::shared_ptr<LoadedGLTF>> loadGltf(VulkanEngine *engine, std::f
         // build material
         newMat->data = engine->metalRoughMaterial.write_material(engine->_device, passType, materialResources, file.descriptorPool);
 
+        //note we jump by size of MaterialConstants
         data_index++;
     }
 

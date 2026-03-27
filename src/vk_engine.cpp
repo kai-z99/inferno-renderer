@@ -71,7 +71,7 @@ void VulkanEngine::init()
 
 
     //init scene
-    std::string structurePath = { "assets/structure.glb" };
+    std::string structurePath = { "assets/donutWithPBR.glb" };
     auto structureFile = loadGltf(this, structurePath);
 
     assert(structureFile.has_value());
@@ -722,9 +722,9 @@ void VulkanEngine::draw_geometry(VkCommandBuffer cmd)
         //bind pipeline and descriptor-------------------------------------------------------------------------
         //no need to update descriptor sets with write_buffer/image and update_set because this data doesnt change.
         vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, draw.material->pipeline->pipeline);
-        vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, draw.material->pipeline->layout, 0, 1, &globalDescriptor, 0, nullptr);
+        vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, draw.material->pipeline->layout, 0, 1, &globalDescriptor, 0, nullptr); //descriptor set 0
         //this VkDescriptorSet (&draw.material->materialSet) holds the unique textures of the surface
-        vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, draw.material->pipeline->layout, 1, 1, &draw.material->materialSet, 0, nullptr);
+        vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, draw.material->pipeline->layout, 1, 1, &draw.material->materialSet, 0, nullptr); //descriptor set 1
 
         //bind index buffer
         vkCmdBindIndexBuffer(cmd, draw.indexBuffer, 0, VK_INDEX_TYPE_UINT32);
@@ -817,7 +817,7 @@ void VulkanEngine::draw()
     vkutil::transition_image(cmd, _drawImage.image, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
     vkutil::transition_image(cmd, _swapchainImages[swapchainImageIndex], VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
 
-    // execute a copy from the draw image into the swapchain
+    // blit our draw image onto swapchain
     vkutil::copy_image_to_image(cmd, _drawImage.image, _swapchainImages[swapchainImageIndex], _drawExtent, _swapchainExtent);
 
     // set swapchain image layout to Attachment Optimal so we can draw GUI it

@@ -32,6 +32,7 @@ struct AllocatedImage
     VkFormat imageFormat;
 };
 
+//basically holds info of a VMA allocated buffer
 struct AllocatedBuffer 
 {
     VkBuffer buffer;
