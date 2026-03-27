@@ -494,12 +494,27 @@ std::optional<std::shared_ptr<LoadedGLTF>> loadGltf(VulkanEngine *engine, std::f
             {
                 newSurface.material = materials[0];
             }
+
+            //calcualte bounding box
+            glm::vec3 minpos = vertices[initial_vtx].position;
+            glm::vec3 maxpos = vertices[initial_vtx].position;
+            for (int i = initial_vtx; i < vertices.size(); i++) 
+            {
+                minpos = glm::min(minpos, vertices[i].position);
+                maxpos = glm::max(maxpos, vertices[i].position);
+            }
             
+            // calculate aa bounding box
+            newSurface.bounds.origin = (maxpos + minpos) / 2.f;
+            newSurface.bounds.extents = (maxpos - minpos) / 2.f;
+            newSurface.bounds.sphereRadius = glm::length(newSurface.bounds.extents);
+                
             //vector of surfaces 
             newmesh->surfaces.push_back(newSurface);
         }
 
         //vector of surfaces done
+
 
         //vertex/index buffer done
         newmesh->meshBuffers = engine->uploadMesh(indices, vertices);

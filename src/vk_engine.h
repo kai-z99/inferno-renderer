@@ -107,6 +107,8 @@ struct RenderObject
 
 	glm::mat4 transform;
 	VkDeviceAddress vertexBufferAddress;
+
+	Bounds bounds;
 };
 
 struct DrawContext 

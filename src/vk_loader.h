@@ -10,11 +10,19 @@ struct GLTFMaterial
 	MaterialInstance data;
 };
 
+struct Bounds 
+{
+    glm::vec3 origin;
+    float sphereRadius;
+    glm::vec3 extents;
+};
+
 //a portion of a mesh buffer that represents a surface
 struct GeoSurface 
 {
     uint32_t startIndex; //starting index in index buffer
-    uint32_t count;      
+    uint32_t count;  
+    Bounds bounds;    
     std::shared_ptr<GLTFMaterial> material;
 };
 
@@ -25,6 +33,7 @@ struct MeshAsset
     std::vector<GeoSurface> surfaces;
     GPUMeshBuffers meshBuffers;
 };
+
 
 class VulkanEngine;
 
@@ -55,8 +64,5 @@ private:
 
     void clearAll();
 };
-
-//forward declaration
-class VulkanEngine;
 
 std::optional<std::shared_ptr<LoadedGLTF>> loadGltf(VulkanEngine* engine, std::filesystem::path filePath);
