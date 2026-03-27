@@ -20,6 +20,7 @@ add_executable (engine
   string_utils.h
   cvars.h
   cvars.cpp
+  cvars_util.h
 )
 
 set_target_properties(engine PROPERTIES

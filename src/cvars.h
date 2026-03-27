@@ -50,6 +50,7 @@ struct Vec3CVarOptions
 	float step = 0.01f;
 	std::string format = "%.3f";
 };
+
 class CVarSystem
 {
 
