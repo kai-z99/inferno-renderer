@@ -17,6 +17,9 @@ add_executable (engine
   vk_loader.cpp
   camera.cpp
   camera.h
+  string_utils.h
+  cvars.h
+  cvars.cpp
 )
 
 set_target_properties(engine PROPERTIES

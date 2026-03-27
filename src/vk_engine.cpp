@@ -1,5 +1,6 @@
 //> includes
 #include "vk_engine.h"
+#include "cvars.h"
 
 #include <SDL.h>
 #include <SDL_vulkan.h>
@@ -21,6 +22,9 @@
 
 #include <chrono>
 #include <thread>
+
+static AutoCVar_Float cvarRenderScale("r.renderScale", "Internal render scale", 1.0, CVarFlags::EditFloatDrag);
+static AutoCVar_Int cvarBackgroundEffect("r.backgroundEffect", "Background effect index", 0);
 
 VulkanEngine *loadedEngine = nullptr;
 
@@ -689,6 +693,15 @@ bool is_visible_planes(RenderObject& obj, const glm::mat4& viewproj)
 
 void VulkanEngine::draw_background(VkCommandBuffer cmd)
 {
+    if (backgroundEffects.empty())
+    {
+        return;
+    }
+
+    int effectIndex = std::clamp(cvarBackgroundEffect.Get(), 0, (int)backgroundEffects.size() - 1);
+    cvarBackgroundEffect.Set(effectIndex);
+    currentBackgroundEffect = effectIndex;
+
     VkClearColorValue clearValue;
     float flash = std::abs(std::sin(_frameNumber / 120.f));
     clearValue = {{0.0f, 0.0f, flash, 1.0f}};
@@ -697,7 +710,7 @@ void VulkanEngine::draw_background(VkCommandBuffer cmd)
     VkImageSubresourceRange clearRange = vkinit::image_subresource_range(VK_IMAGE_ASPECT_COLOR_BIT); // clear color buffer
     vkCmdClearColorImage(cmd, _drawImage.image, VK_IMAGE_LAYOUT_GENERAL, &clearValue, 1, &clearRange);
 
-    ComputeEffect &effect = backgroundEffects[currentBackgroundEffect];
+    ComputeEffect &effect = backgroundEffects[effectIndex];
 
     // bind the  compute pipeline
     vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, effect.pipeline);
@@ -817,8 +830,8 @@ void VulkanEngine::draw_geometry(VkCommandBuffer cmd)
                 VkViewport viewport = {};
                 viewport.x = 0;
                 viewport.y = 0;
-                viewport.width = (float)_windowExtent.width;
-                viewport.height = (float)_windowExtent.height;
+                viewport.width = (float)_drawExtent.width;
+                viewport.height = (float)_drawExtent.height;
                 viewport.minDepth = 0.f;
                 viewport.maxDepth = 1.f;
 
@@ -827,8 +840,8 @@ void VulkanEngine::draw_geometry(VkCommandBuffer cmd)
                 VkRect2D scissor = {};
                 scissor.offset.x = 0;
                 scissor.offset.y = 0;
-                scissor.extent.width = _windowExtent.width;
-                scissor.extent.height = _windowExtent.height;
+                scissor.extent.width = _drawExtent.width;
+                scissor.extent.height = _drawExtent.height;
 
                 vkCmdSetScissor(cmd, 0, 1, &scissor);
             }
@@ -904,6 +917,10 @@ void VulkanEngine::draw()
     //_drawExtent = region you choose to render this frame
     //basically the min is there so the draw image extent never goes above the drawImage's actual size.
     //(renderscale <= 1)
+    float renderScale = cvarRenderScale.GetFloat();
+    renderScale = std::clamp(renderScale, 0.3f, 1.0f);
+    cvarRenderScale.Set(renderScale);
+
     _drawExtent.height = std::min(_swapchainExtent.height, _drawImage.imageExtent.height) * renderScale;
     _drawExtent.width = std::min(_swapchainExtent.width, _drawImage.imageExtent.width) * renderScale;
 
@@ -1086,22 +1103,11 @@ void VulkanEngine::run()
         ImGui_ImplSDL2_NewFrame();
         ImGui::NewFrame();
 
-        if (ImGui::Begin("background"))
+        if (!backgroundEffects.empty())
         {
-            ImGui::SliderFloat("Render Scale", &renderScale, 0.3f, 1.f);
-
-            ComputeEffect &selected = backgroundEffects[currentBackgroundEffect];
-
-            ImGui::Text("Selected effect: %s ", selected.name);
-
-            ImGui::SliderInt("Effect Index", &currentBackgroundEffect, 0, backgroundEffects.size() - 1);
-
-            ImGui::InputFloat4("data1", (float *)&selected.data.data1);
-            ImGui::InputFloat4("data2", (float *)&selected.data.data2);
-            ImGui::InputFloat4("data3", (float *)&selected.data.data3);
-            ImGui::InputFloat4("data4", (float *)&selected.data.data4);
-
-            ImGui::End();
+            int effectIndex = std::clamp(cvarBackgroundEffect.Get(), 0, (int)backgroundEffects.size() - 1);
+            cvarBackgroundEffect.Set(effectIndex);
+            currentBackgroundEffect = effectIndex;
         }
 
         ImGui::Begin("Stats");
@@ -1111,6 +1117,12 @@ void VulkanEngine::run()
         ImGui::Text("update time %f ms", stats.scene_update_time);
         ImGui::Text("triangles %i", stats.triangle_count);
         ImGui::Text("draws %i", stats.drawcall_count);
+        ImGui::End();
+
+        if (ImGui::Begin("CVars"))
+        {
+            CVarSystem::Get()->DrawImguiEditor();
+        }
         ImGui::End();
 
         // make imgui calculate internal draw structures
