@@ -342,7 +342,7 @@ std::optional<std::shared_ptr<LoadedGLTF>> loadGltf(VulkanEngine *engine, std::f
         // default the material textures
         materialResources.colorImage = engine->_whiteImage;
         materialResources.colorSampler = engine->_defaultSamplerLinear;
-        materialResources.metalRoughImage = engine->_whiteImage;
+        materialResources.metalRoughImage = engine->_blackImage;
         materialResources.metalRoughSampler = engine->_defaultSamplerLinear;
 
         // MaterialConstants we made earlier

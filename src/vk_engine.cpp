@@ -50,7 +50,7 @@ static AutoCVar_Int cvarBackgroundEffect(
 static AutoCVar_Vec3 cvarSunDir(
     "r.sun.direction",
     "Sun light direction",
-    glm::vec3(0.0f, 1.0f, 0.5f),
+    glm::vec3(0.0f, -1.0f, 0.5f),
     Vec3CVarOptions{
         .minValue = -1.0f,
         .maxValue = 1.0f,
@@ -195,7 +195,7 @@ void VulkanEngine::create_swapchain(uint32_t width, uint32_t height)
 
     vkb::Swapchain vkbSwapchain = swapchainBuilder
                                       .set_desired_format(VkSurfaceFormatKHR{.format = _swapchainImageFormat, .colorSpace = VK_COLOR_SPACE_SRGB_NONLINEAR_KHR})
-                                      .set_desired_present_mode(VK_PRESENT_MODE_FIFO_KHR)
+                                      .set_desired_present_mode(VK_PRESENT_MODE_IMMEDIATE_KHR)
                                       .set_desired_extent(width, height)
                                       .add_image_usage_flags(VK_IMAGE_USAGE_TRANSFER_DST_BIT)
                                       .build()
@@ -1074,7 +1074,8 @@ void VulkanEngine::update_scene()
     sceneData.viewproj = projection * view;
 	sceneData.ambientColor = glm::vec4(.1f);
 	sceneData.sunlightColor = glm::vec4(1.f);
-	sceneData.sunlightDirection = glm::vec4(0,1,0.5,1.f);
+	sceneData.sunlightDirection = glm::vec4(cvarSunDir.Get(), 1.0f);
+    sceneData.camPos = glm::vec4(mainCamera.position, 1.0f);
 
     auto end = std::chrono::system_clock::now();
 
@@ -1137,6 +1138,7 @@ void VulkanEngine::run()
 
         ImGui::Begin("Stats");
 
+        ImGui::Text("fps %d", stats.fps);
         ImGui::Text("frametime %f ms", stats.frametime);
         ImGui::Text("draw time %f ms", stats.mesh_draw_time);
         ImGui::Text("update time %f ms", stats.scene_update_time);
@@ -1159,6 +1161,7 @@ void VulkanEngine::run()
         auto end = std::chrono::system_clock::now();
         auto elapsed = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
         stats.frametime = elapsed.count() / 1000.f;
+        if (_frameNumber % 30 == 0) stats.fps = static_cast<int>(1000.0f / stats.frametime);
 
     }
 }

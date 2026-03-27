@@ -74,6 +74,7 @@ struct GPUSceneData
     glm::vec4 ambientColor;
     glm::vec4 sunlightDirection; // w for sun power
     glm::vec4 sunlightColor;
+    glm::vec4 camPos;
 };
 
 enum class MaterialPass : uint8_t 
@@ -139,6 +140,7 @@ struct Node : public IRenderable
 
 struct EngineStats
 {
+    int fps;
     float frametime;
     int triangle_count;
     int drawcall_count;
