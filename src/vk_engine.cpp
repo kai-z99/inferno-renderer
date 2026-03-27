@@ -110,7 +110,7 @@ void VulkanEngine::init()
 
 
     //init scene
-    std::string structurePath = { "assets/structure.glb" };
+    std::string structurePath = { "assets/donutWithPBR.glb" };
     auto structureFile = loadGltf(this, structurePath);
 
     assert(structureFile.has_value());
