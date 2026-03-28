@@ -122,7 +122,7 @@ void VulkanEngine::init()
 
 
     //init scene
-    std::string structurePath = { "assets/ABeautifulGame.glb" };
+    std::string structurePath = { "assets/donutWithPBR.glb" };
     auto structureFile = loadGltf(this, structurePath);
 
     assert(structureFile.has_value());
@@ -267,6 +267,18 @@ void VulkanEngine::init_swapchain()
     VkImageViewCreateInfo dview_info = vkinit::imageview_create_info(_depthImage.imageFormat, _depthImage.image, VK_IMAGE_ASPECT_DEPTH_BIT);
     VK_CHECK(vkCreateImageView(_device, &dview_info, nullptr, &_depthImage.imageView));
 
+    //shadow depth image
+    VkExtent3D shadowExtent = { 1024, 1024, 1 };
+    _shadowDepthImage.imageFormat = VK_FORMAT_D32_SFLOAT;
+    _shadowDepthImage.imageExtent = shadowExtent;
+    VkImageUsageFlags shadowImageUsages{};
+    shadowImageUsages |= VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT; 
+    VkImageCreateInfo simg_info = vkinit::image_create_info(_shadowDepthImage.imageFormat, shadowImageUsages,shadowExtent );
+    vmaCreateImage(_allocator, &simg_info, &rimg_allocinfo, &_shadowDepthImage.image, &_shadowDepthImage.allocation, nullptr);
+    VkImageViewCreateInfo sview_info = vkinit::imageview_create_info(_shadowDepthImage.imageFormat, _shadowDepthImage.image, VK_IMAGE_ASPECT_DEPTH_BIT);
+    VK_CHECK(vkCreateImageView(_device, &sview_info, nullptr, &_shadowDepthImage.imageView));
+    
+
     // add to deletion queues
     _mainDeletionQueue.push_function([=, this]()
     {
@@ -275,6 +287,9 @@ void VulkanEngine::init_swapchain()
 
         vkDestroyImageView(_device, _depthImage.imageView, nullptr);
         vmaDestroyImage(_allocator, _depthImage.image, _depthImage.allocation); 
+
+        vkDestroyImageView(_device, _shadowDepthImage.imageView, nullptr);
+        vmaDestroyImage(_allocator, _shadowDepthImage.image, _shadowDepthImage.allocation); 
     });
 }
 
@@ -436,6 +451,7 @@ void VulkanEngine::init_pipelines()
     fmt::print("Initializing pipelines...\n");
     init_background_pipelines();
     metalRoughMaterial.build_pipelines(this);
+    init_shadow_pipeline();
 }
 
 void VulkanEngine::init_background_pipelines()
@@ -519,6 +535,99 @@ void VulkanEngine::init_background_pipelines()
         vkDestroyPipelineLayout(_device, _gradientPipelineLayout, nullptr);
         vkDestroyPipeline(_device, sky.pipeline, nullptr);
         vkDestroyPipeline(_device, gradient.pipeline, nullptr); 
+    });
+}
+
+//TEMP!!!!!!!!!!!!!!!!!!!!1
+void VulkanEngine::init_shadow_pipeline()
+{
+    VkShaderModule shadowVert;
+    if (!vkutil::load_shader_module("shaders/shadow_pass.vert.spv", _device, &shadowVert)) {
+        fmt::println("Error loading shadow vertex shader");
+        return;
+    }
+
+    // set 0 = per-frame scene data for  lightViewProj
+    VkDescriptorSetLayout setLayouts[] = { _gpuSceneDataDescriptorLayout };
+
+    VkPushConstantRange pushRange{};
+    pushRange.offset = 0;
+    pushRange.size = sizeof(GPUDrawPushConstants);
+    pushRange.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+
+    VkPipelineLayoutCreateInfo layoutInfo = vkinit::pipeline_layout_create_info();
+    layoutInfo.setLayoutCount = 1;
+    layoutInfo.pSetLayouts = setLayouts;
+    layoutInfo.pushConstantRangeCount = 1;
+    layoutInfo.pPushConstantRanges = &pushRange;
+
+    VK_CHECK(vkCreatePipelineLayout(_device, &layoutInfo, nullptr, &_shadowPipelineLayout));
+
+    VkPipelineShaderStageCreateInfo stage = vkinit::pipeline_shader_stage_create_info(VK_SHADER_STAGE_VERTEX_BIT, shadowVert);
+
+    VkPipelineVertexInputStateCreateInfo vertexInput{ .sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO };
+
+    VkPipelineInputAssemblyStateCreateInfo ia{ .sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO };
+    ia.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+
+    VkPipelineRasterizationStateCreateInfo rast{ .sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO };
+    rast.polygonMode = VK_POLYGON_MODE_FILL;
+    rast.cullMode = VK_CULL_MODE_BACK_BIT; // 
+    rast.frontFace = VK_FRONT_FACE_CLOCKWISE;
+    rast.lineWidth = 1.0f;
+
+    VkPipelineMultisampleStateCreateInfo msaa{ .sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO };
+    msaa.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
+
+    VkPipelineDepthStencilStateCreateInfo depth{ .sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO };
+    depth.depthTestEnable = VK_TRUE;
+    depth.depthWriteEnable = VK_TRUE;
+    depth.depthCompareOp = VK_COMPARE_OP_LESS_OR_EQUAL; //shadow map depth
+    depth.depthBoundsTestEnable = VK_FALSE;
+    depth.stencilTestEnable = VK_FALSE;
+    depth.minDepthBounds = 0.0f;
+    depth.maxDepthBounds = 1.0f;
+
+    VkPipelineViewportStateCreateInfo vp{ .sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO };
+    vp.viewportCount = 1;
+    vp.scissorCount = 1;
+
+    VkPipelineColorBlendStateCreateInfo blend{ .sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO };
+    blend.attachmentCount = 0;  // depth-only pass
+    blend.pAttachments = nullptr;
+
+    VkDynamicState dynStates[] = { VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR };
+    VkPipelineDynamicStateCreateInfo dyn{ .sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO };
+    dyn.dynamicStateCount = 2;
+    dyn.pDynamicStates = dynStates;
+
+    VkPipelineRenderingCreateInfo renderingInfo{ .sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO };
+    renderingInfo.colorAttachmentCount = 0; // depth-only
+    renderingInfo.pColorAttachmentFormats = nullptr;
+    renderingInfo.depthAttachmentFormat = _shadowDepthImage.imageFormat;
+
+    VkGraphicsPipelineCreateInfo pipeInfo{ .sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO };
+    pipeInfo.pNext = &renderingInfo;
+    pipeInfo.stageCount = 1;
+    pipeInfo.pStages = &stage;
+    pipeInfo.pVertexInputState = &vertexInput;
+    pipeInfo.pInputAssemblyState = &ia;
+    pipeInfo.pRasterizationState = &rast;
+    pipeInfo.pMultisampleState = &msaa;
+    pipeInfo.pDepthStencilState = &depth;
+    pipeInfo.pViewportState = &vp;
+    pipeInfo.pColorBlendState = &blend;
+    pipeInfo.pDynamicState = &dyn;
+    pipeInfo.layout = _shadowPipelineLayout;
+
+    VK_CHECK(vkCreateGraphicsPipelines(_device, VK_NULL_HANDLE, 1, &pipeInfo, nullptr, &_shadowPipeline));
+
+    vkDestroyShaderModule(_device, shadowVert, nullptr);
+
+    _mainDeletionQueue.push_function([=, this]() 
+    {
+        vkDestroyPipeline(_device, _shadowPipeline, nullptr);
+        vkDestroyPipelineLayout(_device, _shadowPipelineLayout, nullptr);
     });
 }
 
@@ -1088,12 +1197,35 @@ void VulkanEngine::update_scene()
 	sceneData.sunlightColor = glm::vec4(1.f);
 	sceneData.sunlightDirection = glm::vec4(cvarSunDir.Get(), cvarSunPower.Get());
     sceneData.camPos = glm::vec4(mainCamera.position, 1.0f);
+    sceneData.lightViewProj = get_sun_matrix(); 
 
     auto end = std::chrono::system_clock::now();
 
     //convert to microseconds (integer), and then come back to miliseconds
     auto elapsed = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
     stats.scene_update_time = elapsed.count() / 1000.f;
+}
+
+glm::mat4 VulkanEngine::get_sun_matrix()
+{
+    glm::vec3 lightDir = glm::normalize(cvarSunDir.Get()); // same source as sunlightDirection.xyz
+
+    const float shadowDistance = 80.0f;
+    const float orthoHalfSize  = 35.0f;
+    const float nearPlane      = 0.1f;
+    const float farPlane       = 200.0f;
+
+    glm::vec3 camForward = glm::normalize(glm::vec3(mainCamera.getRotationMatrix() * glm::vec4(0.f, 0.f, -1.f, 0.f)));
+    glm::vec3 shadowCenter = mainCamera.position + camForward * (shadowDistance * 0.5f); //just an estimate
+
+    glm::vec3 lightPos = shadowCenter - lightDir * 100.0f;
+
+    glm::vec3 up = (std::abs(lightDir.y) > 0.99f) ? glm::vec3(0, 0, 1) : glm::vec3(0, 1, 0);
+    glm::mat4 lightView = glm::lookAt(lightPos, shadowCenter, up);
+    glm::mat4 lightProj = glm::ortho(-orthoHalfSize, orthoHalfSize, -orthoHalfSize, orthoHalfSize, nearPlane, farPlane);
+
+    lightProj[1][1] *= -1.0f;
+    return lightProj * lightView; 
 }
 
 void VulkanEngine::run()

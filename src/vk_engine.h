@@ -157,6 +157,9 @@ public:
 	AllocatedImage _depthImage;
 	VkExtent2D _drawExtent;
 	float renderScale = 1.f;
+
+	//shadow
+	AllocatedImage _shadowDepthImage;
 	
 	//swapchain
 	VkSwapchainKHR _swapchain;
@@ -190,6 +193,10 @@ public:
 	//mesh
 	GPUMeshBuffers uploadMesh(std::span<uint32_t> indices, std::span<Vertex> vertices);
 	std::vector<std::shared_ptr<MeshAsset>> testMeshes;
+	//shadow
+	VkPipeline _shadowPipeline;
+	VkPipelineLayout _shadowPipelineLayout;
+
 
 	//scene
 	GPUSceneData sceneData;
@@ -247,6 +254,7 @@ private:
 	void init_default_data();
 	//pipelines
 	void init_background_pipelines();
+	void init_shadow_pipeline();
 
 	void create_swapchain(uint32_t width, uint32_t height);
 	void destroy_swapchain();
@@ -258,4 +266,5 @@ private:
 
 	//scene
 	void update_scene();
+	glm::mat4 get_sun_matrix();
 };
