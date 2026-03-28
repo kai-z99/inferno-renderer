@@ -7,23 +7,22 @@
 layout (location = 0) in vec3 inNormal;
 layout (location = 1) in vec3 inColor;
 layout (location = 2) in vec2 inUV;
-layout (location = 3) in vec3 inPosWorld;
+layout (location = 3) in vec3 inFragPosWorld;
 
 layout (location = 0) out vec4 outFragColor;
 
 void main() 
 {
-	vec3 test = DirLightEval_CookTorrance(vec3(1.0), 1.0, vec3(1.0),vec3(1.0),vec3(1.0),vec3(1.0), 1.0, 1.0);
+	vec3 lightCol = sceneData.sunlightColor.xyz;
+	float lightPower = sceneData.sunlightDirection.w;
+	vec3 lightDir = normalize(sceneData.sunlightDirection.xyz);
+	vec3 viewDir =  normalize(inFragPosWorld - sceneData.camPos.xyz);
+	vec3 normal = normalize(inNormal);
+	vec3 albedo = texture(colorTex, inUV).rgb * materialData.colorFactors.rgb;
+	float metallic = texture(metalRoughTex, inUV).b * materialData.metal_rough_factors.x;
+	float roughness = texture(metalRoughTex, inUV).g * materialData.metal_rough_factors.y;
 
-
-	float d = max(dot(normalize(inNormal), -sceneData.sunlightDirection.xyz), 0.0);
-	float s = pow(max(dot(-normalize(inPosWorld - sceneData.camPos.xyz), reflect(sceneData.sunlightDirection.xyz, normalize(inNormal))), 0.0), 64.0);
-	vec3 a = sceneData.ambientColor.xyz;
-
-	vec3 I_l = sceneData.sunlightColor.xyz;
-	float specMap = texture(metalRoughTex, inUV).x;
-	vec3 colorMap = texture(colorTex, inUV).xyz;
-
-	outFragColor = vec4(a*colorMap + d*I_l*colorMap + s*I_l*specMap + test, 1.0f);
+	outFragColor = vec4(sceneData.ambientColor.xyz * albedo + DirLightEval_CookTorrance(lightCol, lightPower, lightDir, viewDir, normal, albedo, metallic, roughness), 1.0);
+	//outFragColor = vec4(albedo, 1.0);
 	//outFragColor = vec4(normalize(inNormal), 1.0);
 }

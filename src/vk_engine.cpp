@@ -35,6 +35,18 @@ static AutoCVar_Float cvarRenderScale(
     },
     CVarEditHint::TextBox);
 
+    static AutoCVar_Float cvarSunPower(
+    "r.sunPower",
+    "Internal render scale",
+    5.0,
+    FloatCVarOptions{
+        .minValue = 0.3,
+        .maxValue = 50.0,
+        .step = 0.01f,
+        .format = "%.2f",
+    },
+    CVarEditHint::Slider);
+
 static AutoCVar_Int cvarBackgroundEffect(
     "r.backgroundEffect",
     "Background effect index",
@@ -110,7 +122,7 @@ void VulkanEngine::init()
 
 
     //init scene
-    std::string structurePath = { "assets/donutWithPBR.glb" };
+    std::string structurePath = { "assets/ABeautifulGame.glb" };
     auto structureFile = loadGltf(this, structurePath);
 
     assert(structureFile.has_value());
@@ -195,7 +207,7 @@ void VulkanEngine::create_swapchain(uint32_t width, uint32_t height)
 
     vkb::Swapchain vkbSwapchain = swapchainBuilder
                                       .set_desired_format(VkSurfaceFormatKHR{.format = _swapchainImageFormat, .colorSpace = VK_COLOR_SPACE_SRGB_NONLINEAR_KHR})
-                                      .set_desired_present_mode(VK_PRESENT_MODE_IMMEDIATE_KHR)
+                                      .set_desired_present_mode(VK_PRESENT_MODE_FIFO_KHR)
                                       .set_desired_extent(width, height)
                                       .add_image_usage_flags(VK_IMAGE_USAGE_TRANSFER_DST_BIT)
                                       .build()
@@ -1074,7 +1086,7 @@ void VulkanEngine::update_scene()
     sceneData.viewproj = projection * view;
 	sceneData.ambientColor = glm::vec4(.1f);
 	sceneData.sunlightColor = glm::vec4(1.f);
-	sceneData.sunlightDirection = glm::vec4(cvarSunDir.Get(), 1.0f);
+	sceneData.sunlightDirection = glm::vec4(cvarSunDir.Get(), cvarSunPower.Get());
     sceneData.camPos = glm::vec4(mainCamera.position, 1.0f);
 
     auto end = std::chrono::system_clock::now();
