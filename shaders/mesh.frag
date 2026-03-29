@@ -23,6 +23,8 @@ void main()
 	float roughness = texture(metalRoughTex, inUV).g * materialData.metal_rough_factors.y;
 
 	outFragColor = vec4(sceneData.ambientColor.xyz * albedo + DirLightEval_CookTorrance(lightCol, lightPower, lightDir, viewDir, normal, albedo, metallic, roughness), 1.0);
+	
+	//outFragColor = vec4(texture(shadowMap, inUV));
 	//outFragColor = vec4(albedo, 1.0);
 	//outFragColor = vec4(normalize(inNormal), 1.0);
 }

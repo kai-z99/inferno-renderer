@@ -122,7 +122,7 @@ void VulkanEngine::init()
 
 
     //init scene
-    std::string structurePath = { "assets/donutWithPBR.glb" };
+    std::string structurePath = { "assets/sponza/Sponza.gltf" };
     auto structureFile = loadGltf(this, structurePath);
 
     assert(structureFile.has_value());
@@ -397,8 +397,10 @@ void VulkanEngine::init_descriptors()
     // GLTF PIPELINE: descriptor for per frame resources
     {
         DescriptorLayoutBuilder builder;
-        builder.add_binding(0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER); //ubo
-        _gpuSceneDataDescriptorLayout = builder.build(_device, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT);
+        builder.add_binding(0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER); //ubo (GPUSceneData)
+        builder.add_binding(1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER); //shadowmap
+
+        _perFrameDescriptorLayout = builder.build(_device, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT);
     }
 
     // allocate and write the image for the compute draw descriptor now because we wont need to update it.
@@ -421,7 +423,7 @@ void VulkanEngine::init_descriptors()
     {
         globalDescriptorAllocator.destroy_pools(_device);
 		vkDestroyDescriptorSetLayout(_device, _drawImageDescriptorLayout, nullptr);
-		vkDestroyDescriptorSetLayout(_device, _gpuSceneDataDescriptorLayout, nullptr);
+		vkDestroyDescriptorSetLayout(_device, _perFrameDescriptorLayout, nullptr);
     });
 
     //make our per frame descriptor allocators. We use these each frame to allocate descriptor sets for the per frame resources.
@@ -548,7 +550,7 @@ void VulkanEngine::init_shadow_pipeline()
     }
 
     // set 0 = per-frame scene data for  lightViewProj
-    VkDescriptorSetLayout setLayouts[] = { _gpuSceneDataDescriptorLayout };
+    VkDescriptorSetLayout setLayouts[] = { _perFrameDescriptorLayout };
 
     VkPushConstantRange pushRange{};
     pushRange.offset = 0;
@@ -954,12 +956,18 @@ void VulkanEngine::draw_geometry(VkCommandBuffer cmd)
 	});
 
 	//create a descriptor set (from layout for per frame data we described in setup)
-	VkDescriptorSet globalDescriptor = get_current_frame()._frameDescriptors.allocate(_device, _gpuSceneDataDescriptorLayout);
+	VkDescriptorSet globalDescriptor = get_current_frame()._frameDescriptors.allocate(_device, _perFrameDescriptorLayout);
 
 	DescriptorWriter writer;
     //bind our buffer data to binding 0 of that descriptor set.
     //             binding 0                                              set 0
 	writer.write_buffer(0, gpuSceneDataBuffer.buffer, sizeof(GPUSceneData), 0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER); 
+    //shadow map in binding 1
+    writer.write_image(1,
+        _shadowDepthImage.imageView,
+        _defaultSamplerLinear,
+        VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_OPTIMAL,
+        VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
 	writer.update_set(_device, globalDescriptor); 
     //-------------------------------------------------------------------------------------------------------
     
@@ -1042,6 +1050,74 @@ void VulkanEngine::draw_geometry(VkCommandBuffer cmd)
     stats.mesh_draw_time = elapsed.count() / 1000.f;
 }
 
+void VulkanEngine::draw_shadow_map(VkCommandBuffer cmd)
+{
+    VkExtent2D shadowExtent = 
+    {
+    _shadowDepthImage.imageExtent.width,
+    _shadowDepthImage.imageExtent.height
+    };
+
+    VkRenderingAttachmentInfo depthAttachment = vkinit::depth_attachment_info(_shadowDepthImage.imageView, VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL, 1.0f);
+
+    // VkRenderingInfo is the info for vkCmdBeginRendering. It needs to know the region we are drawing and the attachments we are drawing into.
+    VkRenderingInfo renderInfo = vkinit::rendering_info(shadowExtent, nullptr, &depthAttachment);
+
+    // start dynamic rendering
+    vkCmdBeginRendering(cmd, &renderInfo);
+
+    VkViewport viewport{};
+    viewport.x = 0;
+    viewport.y = 0;
+    viewport.width  = (float)shadowExtent.width;
+    viewport.height = (float)shadowExtent.height;
+    viewport.minDepth = 0.f;
+    viewport.maxDepth = 1.f;
+    vkCmdSetViewport(cmd, 0, 1, &viewport);
+
+    VkRect2D scissor{};
+    scissor.offset = {0, 0};
+    scissor.extent = shadowExtent;
+    vkCmdSetScissor(cmd, 0, 1, &scissor);
+
+    // create/write perfrmame ds
+	AllocatedBuffer gpuSceneDataBuffer = create_buffer(sizeof(GPUSceneData), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
+	GPUSceneData* sceneUniformData = (GPUSceneData*)gpuSceneDataBuffer.allocation->GetMappedData(); //get cpu pointer to buffer mem
+	*sceneUniformData = sceneData; //set buffer mem to our cpu side scene data. this is updated in update_scene()
+	get_current_frame()._deletionQueue.push_function([=, this]() 
+    {
+		destroy_buffer(gpuSceneDataBuffer);
+	});
+
+	VkDescriptorSet perFrameDescriptorSet = get_current_frame()._frameDescriptors.allocate(_device, _perFrameDescriptorLayout);
+	DescriptorWriter writer;
+	writer.write_buffer(0, gpuSceneDataBuffer.buffer, sizeof(GPUSceneData), 0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER); 
+	writer.update_set(_device, perFrameDescriptorSet); 
+
+
+    //bind pipeline and ds
+    vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, _shadowPipeline);
+    vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, _shadowPipelineLayout, 0, 1, &perFrameDescriptorSet, 0, nullptr);
+
+
+    for (RenderObject& r : mainDrawContext.OpaqueSurfaces)
+    {
+        //bind push constants
+        GPUDrawPushConstants pushConstants;
+        pushConstants.vertexBuffer = r.vertexBufferAddress;
+        pushConstants.worldMatrix = r.transform;
+        vkCmdPushConstants(cmd, _shadowPipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(GPUDrawPushConstants), &pushConstants);
+
+        vkCmdBindIndexBuffer(cmd, r.indexBuffer, 0, VK_INDEX_TYPE_UINT32);
+
+        //draw
+        vkCmdDrawIndexed(cmd, r.indexCount, 1, r.firstIndex, 0, 0);
+    }
+
+    vkCmdEndRendering(cmd);
+
+}
+
 void VulkanEngine::draw()
 {
     update_scene();
@@ -1093,32 +1169,40 @@ void VulkanEngine::draw()
 
     // transition our main draw image into general layout so we can write into it
     // we will overwrite it all so we dont care about what was the older layout
-    vkutil::transition_image(cmd, _drawImage.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL); // add barrier to cmd
+    vkutil::transition_image(cmd, _drawImage.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_ASPECT_COLOR_BIT); // add barrier to cmd
 
     draw_background(cmd); // bg
 
+    //draw shadow map ---------------
+    vkutil::transition_image(cmd, _shadowDepthImage.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL, VK_IMAGE_ASPECT_DEPTH_BIT);
+
+    draw_shadow_map(cmd);
+
+    //read only 
+    vkutil::transition_image(cmd, _shadowDepthImage.image, VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_OPTIMAL, VK_IMAGE_ASPECT_DEPTH_BIT);
+
     // transution from general -> VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL.
     // Note that this is the VkRenderingAttachmentInfo we defined we would be writing into in our VkRenderingInfo (dynamic rendering info)
-    vkutil::transition_image(cmd, _drawImage.image, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
-    vkutil::transition_image(cmd, _depthImage.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL);
+    vkutil::transition_image(cmd, _drawImage.image, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_ASPECT_COLOR_BIT);
+    vkutil::transition_image(cmd, _depthImage.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL, VK_IMAGE_ASPECT_DEPTH_BIT);
 
     draw_geometry(cmd); // trinagle
 
     // transition the draw image and the swapchain image states so we can blit the image into the swapchain.
-    vkutil::transition_image(cmd, _drawImage.image, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
-    vkutil::transition_image(cmd, _swapchainImages[swapchainImageIndex], VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+    vkutil::transition_image(cmd, _drawImage.image, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,VK_IMAGE_ASPECT_COLOR_BIT );
+    vkutil::transition_image(cmd, _swapchainImages[swapchainImageIndex], VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_ASPECT_COLOR_BIT);
 
     // blit our draw image onto swapchain
     vkutil::copy_image_to_image(cmd, _drawImage.image, _swapchainImages[swapchainImageIndex], _drawExtent, _swapchainExtent);
 
     // set swapchain image layout to Attachment Optimal so we can draw GUI it
-    vkutil::transition_image(cmd, _swapchainImages[swapchainImageIndex], VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+    vkutil::transition_image(cmd, _swapchainImages[swapchainImageIndex], VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_ASPECT_COLOR_BIT);
 
     // draw imgui into the swapchain image
     draw_imgui(cmd, _swapchainImageViews[swapchainImageIndex]);
 
     // set swapchain image layout to Present so we can show it on the screen
-    vkutil::transition_image(cmd, _swapchainImages[swapchainImageIndex], VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
+    vkutil::transition_image(cmd, _swapchainImages[swapchainImageIndex], VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR, VK_IMAGE_ASPECT_COLOR_BIT);
 
     // finalize the command buffer (we can no longer add commands, but it can now be executed)
     VK_CHECK(vkEndCommandBuffer(cmd));
@@ -1211,9 +1295,9 @@ glm::mat4 VulkanEngine::get_sun_matrix()
     glm::vec3 lightDir = glm::normalize(cvarSunDir.Get()); // same source as sunlightDirection.xyz
 
     const float shadowDistance = 80.0f;
-    const float orthoHalfSize  = 35.0f;
+    const float orthoHalfSize  = 100.0f;
     const float nearPlane      = 0.1f;
-    const float farPlane       = 200.0f;
+    const float farPlane       = 150.0f;
 
     glm::vec3 camForward = glm::normalize(glm::vec3(mainCamera.getRotationMatrix() * glm::vec4(0.f, 0.f, -1.f, 0.f)));
     glm::vec3 shadowCenter = mainCamera.position + camForward * (shadowDistance * 0.5f); //just an estimate
@@ -1473,7 +1557,7 @@ AllocatedImage VulkanEngine::create_image(void *data, VkExtent3D size, VkFormat 
     //(stall)
 	immediate_submit([&](VkCommandBuffer cmd) 
     {
-		vkutil::transition_image(cmd, new_image.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+		vkutil::transition_image(cmd, new_image.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_ASPECT_COLOR_BIT);
 
 		VkBufferImageCopy copyRegion = {};
 		copyRegion.bufferOffset = 0;
@@ -1495,7 +1579,7 @@ AllocatedImage VulkanEngine::create_image(void *data, VkExtent3D size, VkFormat 
         } 
         else 
         {
-            vkutil::transition_image(cmd, new_image.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+            vkutil::transition_image(cmd, new_image.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_ASPECT_COLOR_BIT);
         }
 	});
 
@@ -1543,9 +1627,9 @@ void GLTFMetallic_Roughness::build_pipelines(VulkanEngine *engine)
     //no cleanup for this yet.
     materialLayout = layoutBuilder.build(engine->_device, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT);
 
-    //0:_gpuSceneDataDescriptorLayout has layout for per-frame like matrices etc.
+    //0:_perFrameDescriptorLayout has layout for per-frame like matrices etc.
     //1: materialLayout has layout for materials
-	VkDescriptorSetLayout layouts[] = { engine->_gpuSceneDataDescriptorLayout, materialLayout};
+	VkDescriptorSetLayout layouts[] = { engine->_perFrameDescriptorLayout, materialLayout};
 
     //create the pipeline layout with our push constants/descriptor layouts
 	VkPipelineLayoutCreateInfo mesh_layout_info = vkinit::pipeline_layout_create_info();

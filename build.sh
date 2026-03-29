@@ -25,10 +25,10 @@ esac
 echo "[build] configuring..."
 cmake -S . -B "$BUILD_DIR" -G "$GEN" -DCMAKE_BUILD_TYPE="$TYPE"
 
-echo "[build] building engine..."
-cmake --build "$BUILD_DIR" -j"$JOBS"
-
 echo "[build] building shaders..."
 cmake --build "$BUILD_DIR" --target Shaders -j"$JOBS"
+
+echo "[build] building engine..."
+cmake --build "$BUILD_DIR" -j"$JOBS"
 
 echo "[build] done"

@@ -200,7 +200,7 @@ public:
 
 	//scene
 	GPUSceneData sceneData;
-	VkDescriptorSetLayout _gpuSceneDataDescriptorLayout;
+	VkDescriptorSetLayout _perFrameDescriptorLayout;
 	Camera mainCamera;
 	std::unordered_map<std::string, std::shared_ptr<LoadedGLTF>> loadedScenes;
 	
@@ -262,6 +262,7 @@ private:
 
 	void draw_background(VkCommandBuffer cmd);
 	void draw_geometry(VkCommandBuffer cmd);
+	void draw_shadow_map(VkCommandBuffer cmd);
 	void draw_imgui(VkCommandBuffer cmd, VkImageView targetImageView);
 
 	//scene
