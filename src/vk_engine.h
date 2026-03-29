@@ -1,4 +1,4 @@
-// vulkan_guide.h : Include file for standard system include files,
+﻿// vulkan_guide.h : Include file for standard system include files,
 // or project specific include files.
 
 #pragma once
@@ -160,6 +160,7 @@ public:
 
 	//shadow
 	AllocatedImage _shadowDepthImage;
+	uint32_t _shadowMapResolution = 1024;
 	
 	//swapchain
 	VkSwapchainKHR _swapchain;

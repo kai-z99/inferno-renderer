@@ -122,7 +122,7 @@ void VulkanEngine::init()
 
 
     //init scene
-    std::string structurePath = { "assets/donutWithPBR.glb" };
+    std::string structurePath = { "assets/sponza/Sponza.gltf" };
     auto structureFile = loadGltf(this, structurePath);
 
     assert(structureFile.has_value());
@@ -268,7 +268,7 @@ void VulkanEngine::init_swapchain()
     VK_CHECK(vkCreateImageView(_device, &dview_info, nullptr, &_depthImage.imageView));
 
     //shadow depth image
-    VkExtent3D shadowExtent = { 1024, 1024, 1 };
+    VkExtent3D shadowExtent = { _shadowMapResolution, _shadowMapResolution, 1 };
     _shadowDepthImage.imageFormat = VK_FORMAT_D32_SFLOAT;
     _shadowDepthImage.imageExtent = shadowExtent;
     VkImageUsageFlags shadowImageUsages{};
@@ -568,7 +568,7 @@ void VulkanEngine::init_shadow_pipeline()
     pipelineBuilder.set_shaders(shadowVert);
     pipelineBuilder.set_input_topology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
     pipelineBuilder.set_polygon_mode(VK_POLYGON_MODE_FILL);
-    pipelineBuilder.set_cull_mode(VK_CULL_MODE_BACK_BIT, VK_FRONT_FACE_CLOCKWISE);
+    pipelineBuilder.set_cull_mode(VK_CULL_MODE_NONE, VK_FRONT_FACE_CLOCKWISE);
     pipelineBuilder.set_multisampling_none();
     pipelineBuilder.enable_depthtest(true, VK_COMPARE_OP_LESS_OR_EQUAL);
     pipelineBuilder.set_depth_format(_shadowDepthImage.imageFormat);
@@ -760,51 +760,52 @@ void VulkanEngine::cleanup()
     loadedEngine = nullptr;
 }
 
-bool is_visible_basic(const RenderObject& obj, const glm::mat4& viewproj) 
+//clip space test 
+bool is_visible_basic(const RenderObject& obj, const glm::mat4& viewproj)
 {
-    //return 1;
-    //corners of a identity bounding box in local object space
-    std::array<glm::vec3, 8> corners 
+    static const std::array<glm::vec3, 8> corners = 
     {
-        glm::vec3 { 1, 1, 1 },
-        glm::vec3 { 1, 1,-1 },
-        glm::vec3 { 1,-1, 1 },
-        glm::vec3 { 1,-1,-1 },
-        glm::vec3 {-1, 1, 1 },
-        glm::vec3 {-1, 1,-1 },
-        glm::vec3 {-1,-1, 1 },
-        glm::vec3 {-1,-1,-1 },
+        glm::vec3{ 1,  1,  1},
+        glm::vec3{ 1,  1, -1},
+        glm::vec3{ 1, -1,  1},
+        glm::vec3{ 1, -1, -1},
+        glm::vec3{-1,  1,  1},
+        glm::vec3{-1,  1, -1},
+        glm::vec3{-1, -1,  1},
+        glm::vec3{-1, -1, -1},
     };
 
-    //clip space matrix
-    glm::mat4 matrix = viewproj * obj.transform;
+    glm::mat4 m = viewproj * obj.transform;
 
-    glm::vec3 min = { 1.5, 1.5, 1.5 };
-    glm::vec3 max = {-1.5,-1.5,-1.5 };
-
-    for (int c = 0; c < 8; c++) 
+    std::array<glm::vec4, 8> clipCorners;
+    for (int i = 0; i < 8; ++i)
     {
-        // project each corner of the objects bounding box into clip space
-        glm::vec4 v = matrix * glm::vec4(obj.bounds.origin + (corners[c] * obj.bounds.extents), 1.f);
-
-        // perspective correction
-        v.x = v.x / v.w;
-        v.y = v.y / v.w;
-        v.z = v.z / v.w;
-
-        min = glm::min(glm::vec3 { v.x, v.y, v.z }, min);
-        max = glm::max(glm::vec3 { v.x, v.y, v.z }, max);
+        glm::vec3 p = obj.bounds.origin + corners[i] * obj.bounds.extents;
+        clipCorners[i] = m * glm::vec4(p, 1.0f);
     }
 
-    // check the clip space box is within the view
-    if (min.z > 1.f || max.z < 0.f || min.x > 1.f || max.x < -1.f || min.y > 1.f || max.y < -1.f) 
+    auto all_outside = [&](auto pred) -> bool
     {
-        return false;
-    } 
-    else 
-    {
+        for (const glm::vec4& v : clipCorners)
+        {
+            if (!pred(v)) return false;
+        }
         return true;
-    }
+    };
+
+    //x must be in [-w,w]
+    if (all_outside([](const glm::vec4& v) { return v.x < -v.w; })) return false;
+    if (all_outside([](const glm::vec4& v) { return v.x >  v.w; })) return false;
+
+    //y must be in [-w,w]
+    if (all_outside([](const glm::vec4& v) { return v.y < -v.w; })) return false;
+    if (all_outside([](const glm::vec4& v) { return v.y >  v.w; })) return false;
+
+    // z must be in [0,w]
+    if (all_outside([](const glm::vec4& v) { return v.z < 0.0f; })) return false;
+    if (all_outside([](const glm::vec4& v) { return v.z > v.w; })) return false;
+
+    return true;
 }
 
 bool is_visible_planes(RenderObject& obj, const glm::mat4& viewproj)
@@ -1216,7 +1217,7 @@ void VulkanEngine::update_scene()
     sceneData.view = view;
     sceneData.proj = projection;
     sceneData.viewproj = projection * view;
-	sceneData.ambientColor = glm::vec4(.15f);
+	sceneData.ambientColor = glm::vec4(.25f);
 	sceneData.sunlightColor = glm::vec4(1.f);
 	sceneData.sunlightDirection = glm::vec4(cvarSunDir.Get(), cvarSunPower.Get());
     sceneData.camPos = glm::vec4(mainCamera.position, 1.0f);
