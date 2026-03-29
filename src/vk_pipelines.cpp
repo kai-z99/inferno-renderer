@@ -70,6 +70,13 @@ void PipelineBuilder::clear()
     _shaderStages.clear();
 }
 
+void PipelineBuilder::set_shaders(VkShaderModule vertexShader)
+{
+    _shaderStages.clear();
+
+    _shaderStages.push_back(vkinit::pipeline_shader_stage_create_info(VK_SHADER_STAGE_VERTEX_BIT, vertexShader));
+}
+
 void PipelineBuilder::set_shaders(VkShaderModule vertexShader, VkShaderModule fragmentShader)
 {
     // :)
@@ -201,15 +208,21 @@ VkPipeline PipelineBuilder::build_pipeline(VkDevice device)
     viewportState.viewportCount = 1;
     viewportState.scissorCount = 1;
 
-    // setup dummy color blending. We arent using transparent objects yet
-    // the blending is just "no blend", but we do write to the color attachment
+    //blending
     VkPipelineColorBlendStateCreateInfo colorBlending = {};
     colorBlending.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
     colorBlending.pNext = nullptr;
     colorBlending.logicOpEnable = VK_FALSE; //!!!
     colorBlending.logicOp = VK_LOGIC_OP_COPY;
-    colorBlending.attachmentCount = 1; //single attachment for now..
-    colorBlending.pAttachments = &_colorBlendAttachment;
+    if (_renderInfo.colorAttachmentCount > 0) 
+    {
+        colorBlending.attachmentCount = 1;
+        colorBlending.pAttachments = &_colorBlendAttachment;
+    } else 
+    {
+        colorBlending.attachmentCount = 0;
+        colorBlending.pAttachments = nullptr;
+    }
 
     // completely clear VertexInputStateCreateInfo, as we have no need for it
     VkPipelineVertexInputStateCreateInfo _vertexInputInfo = { .sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO };

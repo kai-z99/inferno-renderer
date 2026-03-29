@@ -24,6 +24,7 @@ public:
 	PipelineBuilder(){ clear(); }
 
     void clear();
+	void set_shaders(VkShaderModule vertexShader); //_shaderStages
 	void set_shaders(VkShaderModule vertexShader, VkShaderModule fragmentShader); //_shaderStages
 	void set_input_topology(VkPrimitiveTopology topology); //_inputAssembly
 	void set_polygon_mode(VkPolygonMode mode); //_rasterizer

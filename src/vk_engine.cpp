@@ -540,16 +540,15 @@ void VulkanEngine::init_background_pipelines()
     });
 }
 
-//TEMP!!!!!!!!!!!!!!!!!!!!1
 void VulkanEngine::init_shadow_pipeline()
 {
     VkShaderModule shadowVert;
-    if (!vkutil::load_shader_module("shaders/shadow_pass.vert.spv", _device, &shadowVert)) {
+    if (!vkutil::load_shader_module("shaders/shadow_pass.vert.spv", _device, &shadowVert)) 
+    {
         fmt::println("Error loading shadow vertex shader");
         return;
     }
 
-    // set 0 = per-frame scene data for  lightViewProj
     VkDescriptorSetLayout setLayouts[] = { _perFrameDescriptorLayout };
 
     VkPushConstantRange pushRange{};
@@ -565,68 +564,24 @@ void VulkanEngine::init_shadow_pipeline()
 
     VK_CHECK(vkCreatePipelineLayout(_device, &layoutInfo, nullptr, &_shadowPipelineLayout));
 
-    VkPipelineShaderStageCreateInfo stage = vkinit::pipeline_shader_stage_create_info(VK_SHADER_STAGE_VERTEX_BIT, shadowVert);
+    PipelineBuilder pipelineBuilder;
+    pipelineBuilder.set_shaders(shadowVert);
+    pipelineBuilder.set_input_topology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
+    pipelineBuilder.set_polygon_mode(VK_POLYGON_MODE_FILL);
+    pipelineBuilder.set_cull_mode(VK_CULL_MODE_BACK_BIT, VK_FRONT_FACE_CLOCKWISE);
+    pipelineBuilder.set_multisampling_none();
+    pipelineBuilder.enable_depthtest(true, VK_COMPARE_OP_LESS_OR_EQUAL);
+    pipelineBuilder.set_depth_format(_shadowDepthImage.imageFormat);
 
-    VkPipelineVertexInputStateCreateInfo vertexInput{ .sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO };
+    // depth-only pass, no call set_color_attachment_format()
 
-    VkPipelineInputAssemblyStateCreateInfo ia{ .sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO };
-    ia.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+    pipelineBuilder._pipelineLayout = _shadowPipelineLayout;
 
-    VkPipelineRasterizationStateCreateInfo rast{ .sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO };
-    rast.polygonMode = VK_POLYGON_MODE_FILL;
-    rast.cullMode = VK_CULL_MODE_NONE; // 
-    rast.frontFace = VK_FRONT_FACE_CLOCKWISE;
-    rast.lineWidth = 1.0f;
-
-    VkPipelineMultisampleStateCreateInfo msaa{ .sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO };
-    msaa.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
-
-    VkPipelineDepthStencilStateCreateInfo depth{ .sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO };
-    depth.depthTestEnable = VK_TRUE;
-    depth.depthWriteEnable = VK_TRUE;
-    depth.depthCompareOp = VK_COMPARE_OP_LESS_OR_EQUAL; //shadow map depth
-    depth.depthBoundsTestEnable = VK_FALSE;
-    depth.stencilTestEnable = VK_FALSE;
-    depth.minDepthBounds = 0.0f;
-    depth.maxDepthBounds = 1.0f;
-
-    VkPipelineViewportStateCreateInfo vp{ .sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO };
-    vp.viewportCount = 1;
-    vp.scissorCount = 1;
-
-    VkPipelineColorBlendStateCreateInfo blend{ .sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO };
-    blend.attachmentCount = 0;  // depth-only pass
-    blend.pAttachments = nullptr;
-
-    VkDynamicState dynStates[] = { VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR };
-    VkPipelineDynamicStateCreateInfo dyn{ .sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO };
-    dyn.dynamicStateCount = 2;
-    dyn.pDynamicStates = dynStates;
-
-    VkPipelineRenderingCreateInfo renderingInfo{ .sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO };
-    renderingInfo.colorAttachmentCount = 0; // depth-only
-    renderingInfo.pColorAttachmentFormats = nullptr;
-    renderingInfo.depthAttachmentFormat = _shadowDepthImage.imageFormat;
-
-    VkGraphicsPipelineCreateInfo pipeInfo{ .sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO };
-    pipeInfo.pNext = &renderingInfo;
-    pipeInfo.stageCount = 1;
-    pipeInfo.pStages = &stage;
-    pipeInfo.pVertexInputState = &vertexInput;
-    pipeInfo.pInputAssemblyState = &ia;
-    pipeInfo.pRasterizationState = &rast;
-    pipeInfo.pMultisampleState = &msaa;
-    pipeInfo.pDepthStencilState = &depth;
-    pipeInfo.pViewportState = &vp;
-    pipeInfo.pColorBlendState = &blend;
-    pipeInfo.pDynamicState = &dyn;
-    pipeInfo.layout = _shadowPipelineLayout;
-
-    VK_CHECK(vkCreateGraphicsPipelines(_device, VK_NULL_HANDLE, 1, &pipeInfo, nullptr, &_shadowPipeline));
+    _shadowPipeline = pipelineBuilder.build_pipeline(_device);
 
     vkDestroyShaderModule(_device, shadowVert, nullptr);
 
-    _mainDeletionQueue.push_function([=, this]() 
+    _mainDeletionQueue.push_function([=, this]()
     {
         vkDestroyPipeline(_device, _shadowPipeline, nullptr);
         vkDestroyPipelineLayout(_device, _shadowPipelineLayout, nullptr);
@@ -857,6 +812,23 @@ bool is_visible_planes(RenderObject& obj, const glm::mat4& viewproj)
     
 }
 
+static void set_viewport_scissor(VkCommandBuffer cmd, VkExtent2D extent)
+{
+    VkViewport viewport{};
+    viewport.x = 0.0f;
+    viewport.y = 0.0f;
+    viewport.width = static_cast<float>(extent.width);
+    viewport.height = static_cast<float>(extent.height);
+    viewport.minDepth = 0.0f;
+    viewport.maxDepth = 1.0f;
+    vkCmdSetViewport(cmd, 0, 1, &viewport);
+
+    VkRect2D scissor{};
+    scissor.offset = {0, 0};
+    scissor.extent = extent;
+    vkCmdSetScissor(cmd, 0, 1, &scissor);
+}
+
 void VulkanEngine::draw_background(VkCommandBuffer cmd)
 {
     if (backgroundEffects.empty())
@@ -933,21 +905,8 @@ void VulkanEngine::draw_geometry(VkCommandBuffer cmd)
     // start dynamic rendering
     vkCmdBeginRendering(cmd, &renderInfo);
 
-    VkViewport viewport = {};
-    viewport.x = 0;
-    viewport.y = 0;
-    viewport.width = _drawExtent.width;
-    viewport.height = _drawExtent.height;
-    viewport.minDepth = 0.f;
-    viewport.maxDepth = 1.f;
-    vkCmdSetViewport(cmd, 0, 1, &viewport);
-
-    VkRect2D scissor = {};
-    scissor.offset.x = 0;
-    scissor.offset.y = 0;
-    scissor.extent.width = _drawExtent.width;
-    scissor.extent.height = _drawExtent.height;
-    vkCmdSetScissor(cmd, 0, 1, &scissor);
+    //set vp/scissor
+    set_viewport_scissor(cmd, _drawExtent);
 
     //CREATE PER-FRAME DESCRIPTOR SET (using layout defined in init)-----------------------------------------
 
@@ -997,24 +956,8 @@ void VulkanEngine::draw_geometry(VkCommandBuffer cmd)
                 vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, r.material->pipeline->pipeline);
                 vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,r.material->pipeline->layout, 0, 1,
                     &globalDescriptor, 0, nullptr);
-
-                VkViewport viewport = {};
-                viewport.x = 0;
-                viewport.y = 0;
-                viewport.width = (float)_drawExtent.width;
-                viewport.height = (float)_drawExtent.height;
-                viewport.minDepth = 0.f;
-                viewport.maxDepth = 1.f;
-
-                vkCmdSetViewport(cmd, 0, 1, &viewport);
-
-                VkRect2D scissor = {};
-                scissor.offset.x = 0;
-                scissor.offset.y = 0;
-                scissor.extent.width = _drawExtent.width;
-                scissor.extent.height = _drawExtent.height;
-
-                vkCmdSetScissor(cmd, 0, 1, &scissor);
+                
+                set_viewport_scissor(cmd, _drawExtent);
             }
 
             vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, r.material->pipeline->layout, 1, 1,
@@ -1074,19 +1017,7 @@ void VulkanEngine::draw_shadow_map(VkCommandBuffer cmd)
     // start dynamic rendering
     vkCmdBeginRendering(cmd, &renderInfo);
 
-    VkViewport viewport{};
-    viewport.x = 0;
-    viewport.y = 0;
-    viewport.width  = (float)shadowExtent.width;
-    viewport.height = (float)shadowExtent.height;
-    viewport.minDepth = 0.f;
-    viewport.maxDepth = 1.f;
-    vkCmdSetViewport(cmd, 0, 1, &viewport);
-
-    VkRect2D scissor{};
-    scissor.offset = {0, 0};
-    scissor.extent = shadowExtent;
-    vkCmdSetScissor(cmd, 0, 1, &scissor);
+    set_viewport_scissor(cmd, shadowExtent);
 
     // create/write perfrmame ds
 	AllocatedBuffer gpuSceneDataBuffer = create_buffer(sizeof(GPUSceneData), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
