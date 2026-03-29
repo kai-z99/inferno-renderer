@@ -1,4 +1,4 @@
-﻿// vulkan_guide.h : Include file for standard system include files,
+// vulkan_guide.h : Include file for standard system include files,
 // or project specific include files.
 
 #pragma once
@@ -211,6 +211,7 @@ public:
 	AllocatedImage _errorCheckerboardImage;
     VkSampler _defaultSamplerLinear;
 	VkSampler _defaultSamplerNearest;
+	VkSampler _shadowSampler;
 
 	//material
 	GLTFMetallic_Roughness metalRoughMaterial;

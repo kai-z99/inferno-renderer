@@ -122,7 +122,7 @@ void VulkanEngine::init()
 
 
     //init scene
-    std::string structurePath = { "assets/sponza/Sponza.gltf" };
+    std::string structurePath = { "assets/donutWithPBR.glb" };
     auto structureFile = loadGltf(this, structurePath);
 
     assert(structureFile.has_value());
@@ -574,7 +574,7 @@ void VulkanEngine::init_shadow_pipeline()
 
     VkPipelineRasterizationStateCreateInfo rast{ .sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO };
     rast.polygonMode = VK_POLYGON_MODE_FILL;
-    rast.cullMode = VK_CULL_MODE_BACK_BIT; // 
+    rast.cullMode = VK_CULL_MODE_NONE; // 
     rast.frontFace = VK_FRONT_FACE_CLOCKWISE;
     rast.lineWidth = 1.0f;
 
@@ -738,10 +738,17 @@ void VulkanEngine::init_default_data()
 	sampl.minFilter = VK_FILTER_LINEAR;
 	vkCreateSampler(_device, &sampl, nullptr, &_defaultSamplerLinear);
 
+    sampl.addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER;
+    sampl.addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER;
+    sampl.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER;
+    sampl.borderColor = VK_BORDER_COLOR_FLOAT_OPAQUE_WHITE;
+    vkCreateSampler(_device, &sampl, nullptr, &_shadowSampler);
+
 	_mainDeletionQueue.push_function([&]()
     {
 		vkDestroySampler(_device,_defaultSamplerNearest,nullptr);
 		vkDestroySampler(_device,_defaultSamplerLinear,nullptr);
+		vkDestroySampler(_device,_shadowSampler,nullptr);
 
 		destroy_image(_whiteImage);
 		destroy_image(_greyImage);
@@ -800,6 +807,7 @@ void VulkanEngine::cleanup()
 
 bool is_visible_basic(const RenderObject& obj, const glm::mat4& viewproj) 
 {
+    //return 1;
     //corners of a identity bounding box in local object space
     std::array<glm::vec3, 8> corners 
     {
@@ -965,7 +973,7 @@ void VulkanEngine::draw_geometry(VkCommandBuffer cmd)
     //shadow map in binding 1
     writer.write_image(1,
         _shadowDepthImage.imageView,
-        _defaultSamplerLinear,
+        _shadowSampler,
         VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_OPTIMAL,
         VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
 	writer.update_set(_device, globalDescriptor); 
@@ -1277,7 +1285,7 @@ void VulkanEngine::update_scene()
     sceneData.view = view;
     sceneData.proj = projection;
     sceneData.viewproj = projection * view;
-	sceneData.ambientColor = glm::vec4(.1f);
+	sceneData.ambientColor = glm::vec4(.15f);
 	sceneData.sunlightColor = glm::vec4(1.f);
 	sceneData.sunlightDirection = glm::vec4(cvarSunDir.Get(), cvarSunPower.Get());
     sceneData.camPos = glm::vec4(mainCamera.position, 1.0f);
@@ -1294,15 +1302,15 @@ glm::mat4 VulkanEngine::get_sun_matrix()
 {
     glm::vec3 lightDir = glm::normalize(cvarSunDir.Get()); // same source as sunlightDirection.xyz
 
-    const float shadowDistance = 80.0f;
-    const float orthoHalfSize  = 100.0f;
+    //const float shadowDistance = 80.0f;
+    const float orthoHalfSize  = 15.0f;
     const float nearPlane      = 0.1f;
     const float farPlane       = 150.0f;
 
     glm::vec3 camForward = glm::normalize(glm::vec3(mainCamera.getRotationMatrix() * glm::vec4(0.f, 0.f, -1.f, 0.f)));
-    glm::vec3 shadowCenter = mainCamera.position + camForward * (shadowDistance * 0.5f); //just an estimate
+    glm::vec3 shadowCenter = {0,0,0}; //just an estimate
 
-    glm::vec3 lightPos = shadowCenter - lightDir * 100.0f;
+    glm::vec3 lightPos = shadowCenter - lightDir * 5.0f;
 
     glm::vec3 up = (std::abs(lightDir.y) > 0.99f) ? glm::vec3(0, 0, 1) : glm::vec3(0, 1, 0);
     glm::mat4 lightView = glm::lookAt(lightPos, shadowCenter, up);

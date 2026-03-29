@@ -48,8 +48,8 @@ vec3 DirLightEval_CookTorrance(vec3 lightCol, float lightPower, vec3 lightDir, v
 
     //0.04 is acceptable for most materials
     vec3 F0 = vec3(0.04);
-    F0 = mix(F0, albedo, metallic); //albedo stores scatter color of dialectrics, base reflectivity metals. (2 pipelines)
-
+    F0 = mix(F0, albedo, metallic);
+    
     vec3 halfway = normalize(-viewDir + -lightDir); //micro facet normal
 
     vec3 radiance = lightCol * lightPower;
