@@ -70,7 +70,7 @@ std::optional<std::size_t> resolve_texture_image_index(const fastgltf::Texture& 
 
 //https://vkguide.dev/docs/new_chapter_5/gltf_textures/
 //modified to run at relative to repo root, and to support ByteView 
-std::optional<AllocatedImage> load_image(VulkanEngine* engine, fastgltf::Asset& asset, fastgltf::Image& image, const std::filesystem::path& assetDirectory)
+std::optional<AllocatedImage> load_image(VulkanEngine* engine, fastgltf::Asset& asset, fastgltf::Image& image, const std::filesystem::path& assetDirectory, VkFormat format)
 {
     AllocatedImage newImage {};
 
@@ -95,7 +95,7 @@ std::optional<AllocatedImage> load_image(VulkanEngine* engine, fastgltf::Asset& 
                     imagesize.height = height;
                     imagesize.depth = 1;
 
-                    newImage = engine->create_image(data, imagesize, VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_USAGE_SAMPLED_BIT,true);
+                    newImage = engine->create_image(data, imagesize, format, VK_IMAGE_USAGE_SAMPLED_BIT,true);
 
                     stbi_image_free(data);
                 }
@@ -110,7 +110,7 @@ std::optional<AllocatedImage> load_image(VulkanEngine* engine, fastgltf::Asset& 
                     imagesize.height = height;
                     imagesize.depth = 1;
 
-                    newImage = engine->create_image(data, imagesize, VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_USAGE_SAMPLED_BIT,true);
+                    newImage = engine->create_image(data, imagesize, format, VK_IMAGE_USAGE_SAMPLED_BIT,true);
 
                     stbi_image_free(data);
                 }
@@ -126,7 +126,7 @@ std::optional<AllocatedImage> load_image(VulkanEngine* engine, fastgltf::Asset& 
                     imagesize.height = height;
                     imagesize.depth = 1;
 
-                    newImage = engine->create_image(data, imagesize, VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_USAGE_SAMPLED_BIT, true);
+                    newImage = engine->create_image(data, imagesize, format, VK_IMAGE_USAGE_SAMPLED_BIT, true);
 
                     stbi_image_free(data);
                 }
@@ -148,7 +148,7 @@ std::optional<AllocatedImage> load_image(VulkanEngine* engine, fastgltf::Asset& 
                                        imagesize.height = height;
                                        imagesize.depth = 1;
 
-                                       newImage = engine->create_image(data, imagesize, VK_FORMAT_R8G8B8A8_UNORM,
+                                       newImage = engine->create_image(data, imagesize, format,
                                            VK_IMAGE_USAGE_SAMPLED_BIT,true);
 
                                        stbi_image_free(data);
@@ -165,7 +165,7 @@ std::optional<AllocatedImage> load_image(VulkanEngine* engine, fastgltf::Asset& 
                                        imagesize.height = height;
                                        imagesize.depth = 1;
 
-                                       newImage = engine->create_image(data, imagesize, VK_FORMAT_R8G8B8A8_UNORM,
+                                       newImage = engine->create_image(data, imagesize, format,
                                            VK_IMAGE_USAGE_SAMPLED_BIT, true);
 
                                        stbi_image_free(data);
@@ -269,26 +269,29 @@ std::optional<std::shared_ptr<LoadedGLTF>> loadGltf(VulkanEngine *engine, std::f
     // temporal arrays for all the objects to use while creating the GLTF data
     std::vector<std::shared_ptr<MeshAsset>> meshes;
     std::vector<std::shared_ptr<Node>> nodes;
-    std::vector<AllocatedImage> images;
     std::vector<std::shared_ptr<GLTFMaterial>> materials;
+    std::unordered_map<std::string, AllocatedImage> imageCache; //name_srgb|unorm : image
 
     // load all textures
-	for (fastgltf::Image& image : gltf.images) 
-    {
-		std::optional<AllocatedImage> img = load_image(engine, gltf, image, path.parent_path());
 
-		if (img.has_value()) 
+    auto get_cached_image = [&](size_t imageIndex, VkFormat format) -> AllocatedImage
+    {
+        const std::string key = std::to_string(imageIndex) + "_" + (format == VK_FORMAT_R8G8B8A8_SRGB ? "srgb" : "unorm");
+
+        if (auto it = imageCache.find(key); it != imageCache.end())
         {
-			images.push_back(*img);
-			file.images[image.name.c_str()] = *img;
-		}
-		else
-        {
-			// we failed to load. Set to checkboard
-			images.push_back(engine->_errorCheckerboardImage);
-			std::cout << "gltf failed to load texture " << image.name << std::endl;
-		}
-	}
+            return it->second;
+        }
+
+        std::optional<AllocatedImage> img = load_image(engine, gltf, gltf.images[imageIndex], path.parent_path(), format);
+
+        AllocatedImage finalImage = img.value_or(engine->_errorCheckerboardImage);
+
+        imageCache[key] = finalImage;
+        file.images[key] = finalImage; // ownership for cleanup
+
+        return finalImage;
+    };
 
      // create buffer to hold all the material CONSTANTS
      // these are part of the gltf pbr standard
@@ -358,7 +361,7 @@ std::optional<std::shared_ptr<LoadedGLTF>> loadGltf(VulkanEngine *engine, std::f
 
             if (auto imageIndex = resolve_texture_image_index(tex); imageIndex.has_value()) 
             {
-                materialResources.colorImage = images[*imageIndex];
+                materialResources.colorImage = get_cached_image(*imageIndex, VK_FORMAT_R8G8B8A8_SRGB);
             }
             if (tex.samplerIndex.has_value()) 
             {
@@ -374,7 +377,7 @@ std::optional<std::shared_ptr<LoadedGLTF>> loadGltf(VulkanEngine *engine, std::f
 
             if (auto imageIndex = resolve_texture_image_index(tex); imageIndex.has_value()) 
             {
-                materialResources.metalRoughImage = images[*imageIndex];
+                materialResources.metalRoughImage = get_cached_image(*imageIndex, VK_FORMAT_R8G8B8A8_UNORM);
             }
             if (tex.samplerIndex.has_value()) 
             {
