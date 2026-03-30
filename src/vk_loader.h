@@ -1,6 +1,7 @@
-﻿#pragma once
+#pragma once
 
 #include <vk_types.h>
+#include <vk_scene.h>
 #include "vk_descriptors.h"
 #include <unordered_map>
 #include <filesystem>
@@ -8,13 +9,6 @@
 struct GLTFMaterial 
 {
 	MaterialInstance data;
-};
-
-struct Bounds 
-{
-    glm::vec3 origin;
-    float sphereRadius;
-    glm::vec3 extents;
 };
 
 //a portion of a mesh buffer that represents a surface
@@ -33,7 +27,6 @@ struct MeshAsset
     std::vector<GeoSurface> surfaces;
     GPUMeshBuffers meshBuffers;
 };
-
 
 class VulkanEngine;
 

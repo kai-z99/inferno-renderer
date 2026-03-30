@@ -104,21 +104,7 @@ void VulkanEngine::init()
 
     init_default_data();
 
-    //init camera
-    mainCamera.velocity = glm::vec3(0.f);
-	mainCamera.position = glm::vec3(0, 0, 5);
-    mainCamera.pitch = 0;
-    mainCamera.yaw = 0;
-
-    //init scene
-   // std::string structurePath = { "assets/sponza/Sponza.gltf" };
-    std::string structurePath = { "assets/donutWithPBR.glb" };
-    //std::string structurePath = { "assets/BoomBox.glb" };
-    auto structureFile = loadGltf(this, structurePath);
-
-    assert(structureFile.has_value());
-
-    loadedScenes["structure"] = *structureFile;
+    init_scene();
 
     // everything went fine
     _isInitialized = true;
@@ -663,6 +649,25 @@ void VulkanEngine::init_default_data()
 	});
 }
 
+void VulkanEngine::init_scene()
+{
+    // init camera
+    mainCamera.velocity = glm::vec3(0.f);
+	mainCamera.position = glm::vec3(0, 0, 5);
+    mainCamera.pitch = 0;
+    mainCamera.yaw = 0;
+
+    // init default scene
+   // std::string structurePath = { "assets/sponza/Sponza.gltf" };
+    std::string structurePath = { "assets/donutWithPBR.glb" };
+    //std::string structurePath = { "assets/BoomBox.glb" };
+    auto structureFile = loadGltf(this, structurePath);
+
+    assert(structureFile.has_value());
+
+    loadedScenes["structure"] = *structureFile;
+}
+
 void VulkanEngine::cleanup()
 {
     fmt::print("Cleaning up...\n");
@@ -712,7 +717,7 @@ void VulkanEngine::cleanup()
 }
 
 //clip space test 
-bool is_visible_basic(const RenderObject& obj, const glm::mat4& viewproj)
+static bool is_visible_basic(const RenderObject& obj, const glm::mat4& viewproj)
 {
     static const std::array<glm::vec3, 8> corners = 
     {
@@ -759,9 +764,9 @@ bool is_visible_basic(const RenderObject& obj, const glm::mat4& viewproj)
     return true;
 }
 
-bool is_visible_planes(RenderObject& obj, const glm::mat4& viewproj)
+static bool is_visible_planes(RenderObject& obj, const glm::mat4& viewproj)
 {
-    
+    return 1;
 }
 
 static void set_viewport_scissor(VkCommandBuffer cmd, VkExtent2D extent)
@@ -1304,35 +1309,3 @@ void VulkanEngine::immediate_submit(std::function<void(VkCommandBuffer cmd)> &&f
     VK_CHECK(vkWaitForFences(_device, 1, &_immFence, true, 9999999999));
 }
 
-//MESH------------------------------
-
-void MeshNode::Draw(const glm::mat4 &topMatrix, DrawContext &ctx)
-{
-	glm::mat4 nodeMatrix = topMatrix * worldTransform;
-
-    //for each surface of the mesh make a RenderObject and add it to the context.
-	for (auto& s : mesh->surfaces) 
-    {
-		RenderObject def;
-
-		def.indexCount = s.count;
-		def.firstIndex = s.startIndex;
-		def.indexBuffer = mesh->meshBuffers.indexBuffer.buffer;
-		def.material = &s.material->data;
-        def.bounds = s.bounds;
-		def.transform = nodeMatrix;
-		def.vertexBufferAddress = mesh->meshBuffers.vertexBufferAddress;
-        
-		if (s.material->data.passType == MaterialPass::Transparent) 
-        {
-            ctx.TransparentSurfaces.push_back(def);
-        } 
-        else 
-        {
-            ctx.OpaqueSurfaces.push_back(def);
-        }
-	}
-
-	// recurse down
-	Node::Draw(topMatrix, ctx);
-}

@@ -6,6 +6,7 @@
 #include <vk_types.h>
 #include <vk_descriptors.h>
 #include <vk_materials.h>
+#include <vk_scene.h>
 #include <vk_loader.h> 
 #include <camera.h>
 
@@ -40,35 +41,6 @@ struct FrameData
 
 	DeletionQueue _deletionQueue;
 	DescriptorAllocatorGrowable _frameDescriptors;
-};
-
-//rendering-----
-
-struct RenderObject 
-{
-	uint32_t indexCount;
-	uint32_t firstIndex;
-	VkBuffer indexBuffer;
-
-	MaterialInstance* material;
-
-	glm::mat4 transform;
-	VkDeviceAddress vertexBufferAddress;
-
-	Bounds bounds;
-};
-
-struct DrawContext 
-{
-	std::vector<RenderObject> OpaqueSurfaces;
-	std::vector<RenderObject> TransparentSurfaces;
-};
-
-struct MeshNode : public Node 
-{
-	std::shared_ptr<MeshAsset> mesh;
-
-	virtual void Draw(const glm::mat4& topMatrix, DrawContext& ctx) override;
 };
 
 constexpr unsigned int FRAME_OVERLAP = 2;
@@ -109,6 +81,7 @@ private:
 	void init_pipelines();
 	void init_imgui();
 	void init_default_data();
+	void init_scene();
 	//pipelines
 	void init_background_pipelines();
 	void init_shadow_pipeline();
