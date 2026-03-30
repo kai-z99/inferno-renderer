@@ -24,7 +24,6 @@ void main()
 	vec3 N = normalize(inNormal);
 	vec3 B = normalize(cross(N, T) * inTangent.w);
 	mat3 TBN = mat3(T, B, N);
-
 	vec3 normalTangentSpace = texture(normalTex, inUV).xyz;
 	vec3 normal = normalize(TBN * normalTangentSpace);
 

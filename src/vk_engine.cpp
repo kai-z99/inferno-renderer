@@ -121,9 +121,9 @@ void VulkanEngine::init()
     mainCamera.yaw = 0;
 
     //init scene
-    std::string structurePath = { "assets/sponza/Sponza.gltf" };
-    //std::string structurePath = { "assets/donutWithPBR.glb" };
-    //std::string structurePath = { "assets/ABeautifulGame.glb" };
+   // std::string structurePath = { "assets/sponza/Sponza.gltf" };
+    std::string structurePath = { "assets/donutWithPBR.glb" };
+    //std::string structurePath = { "assets/BoomBox.glb" };
     auto structureFile = loadGltf(this, structurePath);
 
     assert(structureFile.has_value());

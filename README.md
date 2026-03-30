@@ -3,6 +3,9 @@
 WIP Vulkan renderer.
 
 - Current status: working on PBR pipeline.
+- todo:
+  - hdr
+  - ibl
 
 ## Install (Linux)
 
