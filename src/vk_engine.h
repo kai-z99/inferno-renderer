@@ -1,4 +1,4 @@
-﻿// vulkan_guide.h : Include file for standard system include files,
+// vulkan_guide.h : Include file for standard system include files,
 // or project specific include files.
 
 #pragma once
@@ -39,24 +39,6 @@ struct FrameData
 
 	DeletionQueue _deletionQueue;
 	DescriptorAllocatorGrowable _frameDescriptors;
-};
-
-struct ComputePushConstants 
-{
-	glm::vec4 data1;
-	glm::vec4 data2;
-	glm::vec4 data3;
-	glm::vec4 data4;
-};
-
-struct ComputeEffect 
-{
-    const char* name;
-
-	VkPipeline pipeline;
-	VkPipelineLayout layout;
-
-	ComputePushConstants data;
 };
 
 struct GLTFMetallic_Roughness 
@@ -131,123 +113,30 @@ constexpr unsigned int FRAME_OVERLAP = 2;
 class VulkanEngine 
 {
 public:
-	FrameData _frames[FRAME_OVERLAP];
-	FrameData& get_current_frame() { return _frames[_frameNumber % FRAME_OVERLAP]; };
-
-	VkQueue _graphicsQueue;
-	uint32_t _graphicsQueueFamily;
-
-	bool _isInitialized{ false };
-	int _frameNumber {0};
-	bool stop_rendering{ false };
-	VkExtent2D _windowExtent{ 1920 , 1080 };
-
-	struct SDL_Window* _window{ nullptr };
-	bool resize_requested{false};
-
 	static VulkanEngine& Get();
 
-	//general
-	VkInstance _instance;// Vulkan library handle
-	VkDebugUtilsMessengerEXT _debug_messenger;// Vulkan debug output handle
-	VkPhysicalDevice _chosenGPU;// GPU chosen as the default device
-	VkDevice _device; // Vulkan device for commands
-	VkSurfaceKHR _surface;// Vulkan window surface
-
-	//draw resources
-	AllocatedImage _drawImage;
-	AllocatedImage _depthImage;
-	VkExtent2D _drawExtent;
-	float renderScale = 1.f;
-
-	//shadow
-	AllocatedImage _shadowDepthImage;
-	uint32_t _shadowMapResolution = 1024;
-	
-	//swapchain
-	VkSwapchainKHR _swapchain;
-	VkFormat _swapchainImageFormat;
-	std::vector<VkImage> _swapchainImages;
-	std::vector<VkImageView> _swapchainImageViews;
-	VkExtent2D _swapchainExtent;
-
-	//immediate submission
-    VkFence _immFence;
-    VkCommandBuffer _immCommandBuffer;
-    VkCommandPool _immCommandPool;
-    void immediate_submit(std::function<void(VkCommandBuffer cmd)>&& function);
-
-	//deletion q
-	DeletionQueue _mainDeletionQueue;
-
-	//memoery allocator VMA
-	VmaAllocator _allocator;
-
-	//descriptors
-	DescriptorAllocatorGrowable globalDescriptorAllocator;
-	VkDescriptorSet _drawImageDescriptors;
-	VkDescriptorSetLayout _drawImageDescriptorLayout;
-
-	//pipeline---
-	//gradient/bg
-	VkPipelineLayout _gradientPipelineLayout;
-	std::vector<ComputeEffect> backgroundEffects;
-	int currentBackgroundEffect{0};
-	//mesh
-	GPUMeshBuffers uploadMesh(std::span<uint32_t> indices, std::span<Vertex> vertices);
-	std::vector<std::shared_ptr<MeshAsset>> testMeshes;
-	//shadow
-	VkPipeline _shadowPipeline;
-	VkPipelineLayout _shadowPipelineLayout;
-
-
-	//scene
-	GPUSceneData sceneData;
-	VkDescriptorSetLayout _perFrameDescriptorLayout;
-	Camera mainCamera;
-	std::unordered_map<std::string, std::shared_ptr<LoadedGLTF>> loadedScenes;
-	
-	//image
-	AllocatedImage _whiteImage;
-	AllocatedImage _blackImage;
-	AllocatedImage _greyImage;
-	AllocatedImage _errorCheckerboardImage;
-    VkSampler _defaultSamplerLinear;
-	VkSampler _defaultSamplerNearest;
-	VkSampler _shadowSampler;
-
-	//material
-	GLTFMetallic_Roughness metalRoughMaterial;
-
-	DrawContext mainDrawContext;
-    std::unordered_map<std::string, std::shared_ptr<Node>> loadedNodes;
-
-	//stats
-	EngineStats stats;
-
-
-	//initializes everything in the engine
+	// lifecycle
 	void init();
-
-	//shuts down the engine
 	void cleanup();
-
-	//draw loop
 	void draw();
-
-	//run main loop
 	void run();
 
-	//buffer
-	AllocatedBuffer create_buffer(size_t allocSize, VkBufferUsageFlags usage, VmaMemoryUsage memoryUsage);
-	void destroy_buffer(const AllocatedBuffer& buffer);
-
-	//image
-	AllocatedImage create_image(VkExtent3D size, VkFormat format, VkImageUsageFlags usage, bool mipmapped = false);
-	AllocatedImage create_image(void* data, VkExtent3D size, VkFormat format, VkImageUsageFlags usage, bool mipmapped = false);
-	void destroy_image(const AllocatedImage& img);
+	// loader-facing accessors
+	VkDevice device() const { return _device; }
+	VmaAllocator allocator() const { return _allocator; }
+	GLTFMetallic_Roughness& material_system() { return _metalRoughMaterial; }
+	const AllocatedImage& white_image() const { return _whiteImage; }
+	const AllocatedImage& black_image() const { return _blackImage; }
+	const AllocatedImage& error_checkerboard_image() const { return _errorCheckerboardImage; }
+	VkSampler default_sampler_linear() const { return _defaultSamplerLinear; }
+	void immediate_submit(std::function<void(VkCommandBuffer cmd)>&& function);
 
 private:
+	friend struct GLTFMetallic_Roughness;
+
+	FrameData& get_current_frame() { return _frames[_frameNumber % FRAME_OVERLAP]; }
+
+	// initialization
 	void init_vulkan();
 	void init_swapchain();
 	void init_commands();
@@ -269,7 +158,80 @@ private:
 	void draw_shadow_map(VkCommandBuffer cmd);
 	void draw_imgui(VkCommandBuffer cmd, VkImageView targetImageView);
 
-	//scene
+	// scene
 	void update_scene();
 	glm::mat4 get_sun_matrix();
+
+	// application state
+	bool _isInitialized{ false };
+	int _frameNumber{ 0 };
+	bool stop_rendering{ false };
+	bool resize_requested{ false };
+	VkExtent2D _windowExtent{ 1920, 1080 };
+	struct SDL_Window* _window{ nullptr };
+
+	// core Vulkan handles
+	VkInstance _instance;
+	VkDebugUtilsMessengerEXT _debug_messenger;
+	VkPhysicalDevice _chosenGPU;
+	VkDevice _device;
+	VkSurfaceKHR _surface;
+	VkQueue _graphicsQueue;
+	uint32_t _graphicsQueueFamily;
+	VmaAllocator _allocator;
+
+	// frame resources
+	FrameData _frames[FRAME_OVERLAP];
+	DeletionQueue _mainDeletionQueue;
+
+	// immediate submission
+	VkFence _immFence;
+	VkCommandBuffer _immCommandBuffer;
+	VkCommandPool _immCommandPool;
+
+	// swapchain and render targets
+	VkSwapchainKHR _swapchain;
+	VkFormat _swapchainImageFormat;
+	std::vector<VkImage> _swapchainImages;
+	std::vector<VkImageView> _swapchainImageViews;
+	VkExtent2D _swapchainExtent;
+	AllocatedImage _drawImage;
+	AllocatedImage _depthImage;
+	AllocatedImage _shadowDepthImage;
+	VkExtent2D _drawExtent;
+	float renderScale = 1.f;
+	uint32_t _shadowMapResolution = 1024;
+
+	// descriptors
+	DescriptorAllocatorGrowable globalDescriptorAllocator;
+	VkDescriptorSet _drawImageDescriptors;
+	VkDescriptorSetLayout _drawImageDescriptorLayout;
+	VkDescriptorSetLayout _perFrameDescriptorLayout;
+
+	// pipelines and materials
+	VkPipelineLayout _backgroundPipelineLayout;
+	VkPipeline _backgroundPipeline{ VK_NULL_HANDLE };
+	VkPipeline _shadowPipeline;
+	VkPipelineLayout _shadowPipelineLayout;
+	GLTFMetallic_Roughness _metalRoughMaterial;
+
+	// scene state
+	GPUSceneData sceneData;
+	Camera mainCamera;
+	DrawContext mainDrawContext;
+	std::unordered_map<std::string, std::shared_ptr<LoadedGLTF>> loadedScenes;
+	std::unordered_map<std::string, std::shared_ptr<Node>> loadedNodes;
+	std::vector<std::shared_ptr<MeshAsset>> testMeshes;
+
+	// default resources
+	AllocatedImage _whiteImage;
+	AllocatedImage _blackImage;
+	AllocatedImage _greyImage;
+	AllocatedImage _errorCheckerboardImage;
+	VkSampler _defaultSamplerLinear;
+	VkSampler _defaultSamplerNearest;
+	VkSampler _shadowSampler;
+
+	// statistics
+	EngineStats stats;
 };

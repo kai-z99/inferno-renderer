@@ -8,6 +8,8 @@
 #include <vk_initializers.h>
 #include <vk_types.h>
 #include <vk_images.h>
+#include <vk_resources.h>
+#include <vk_upload.h>
 #include <vk_pipelines.h>
 
 #include "VkBootstrap.h"
@@ -46,18 +48,6 @@ static AutoCVar_Float cvarRenderScale(
         .format = "%.2f",
     },
     CVarEditHint::Slider);
-
-static AutoCVar_Int cvarBackgroundEffect(
-    "r.backgroundEffect",
-    "Background effect index",
-    0,
-    IntCVarOptions{
-        .minValue = 0,
-        .maxValue = 1,
-        .step = 1,
-        .format = "%i",
-    },
-    CVarEditHint::Checkbox);
 
 static AutoCVar_Vec3 cvarSunDir(
     "r.sun.direction",
@@ -452,7 +442,7 @@ void VulkanEngine::init_pipelines()
 {
     fmt::print("Initializing pipelines...\n");
     init_background_pipelines();
-    metalRoughMaterial.build_pipelines(this);
+    _metalRoughMaterial.build_pipelines(this);
     init_shadow_pipeline();
 }
 
@@ -467,23 +457,9 @@ void VulkanEngine::init_background_pipelines()
     computeLayout.pSetLayouts = &_drawImageDescriptorLayout; // array of descriptor set layouts to use for this pipeline
     computeLayout.setLayoutCount = 1;
 
-    // define push constant range
-    VkPushConstantRange pushConstant{};
-    pushConstant.offset = 0;
-    pushConstant.size = sizeof(ComputePushConstants);
-    pushConstant.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
-    computeLayout.pPushConstantRanges = &pushConstant;
-    computeLayout.pushConstantRangeCount = 1;
+    VK_CHECK(vkCreatePipelineLayout(_device, &computeLayout, nullptr, &_backgroundPipelineLayout));
 
-    VK_CHECK(vkCreatePipelineLayout(_device, &computeLayout, nullptr, &_gradientPipelineLayout));
-
-    //--------2. describe info to connect the shaders to the pipeline --------------------------
-    VkShaderModule gradientShader;
-    if (!vkutil::load_shader_module("shaders/gradient_color.comp.spv", _device, &gradientShader))
-    {
-        fmt::print("Error when building the compute shader \n");
-    }
-
+    //--------2. describe info to connect the shader to the pipeline --------------------------
     VkShaderModule skyShader;
     if (!vkutil::load_shader_module("shaders/sky.comp.spv", _device, &skyShader))
     {
@@ -494,49 +470,24 @@ void VulkanEngine::init_background_pipelines()
     stageinfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
     stageinfo.pNext = nullptr;
     stageinfo.stage = VK_SHADER_STAGE_COMPUTE_BIT;
-    stageinfo.module = gradientShader;
+    stageinfo.module = skyShader;
     stageinfo.pName = "main";
 
     //--------3. create the compute pipeline with info from 1 and 2.------------------------
     VkComputePipelineCreateInfo computePipelineCreateInfo{};
     computePipelineCreateInfo.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
     computePipelineCreateInfo.pNext = nullptr;
-    computePipelineCreateInfo.layout = _gradientPipelineLayout; // 1
+    computePipelineCreateInfo.layout = _backgroundPipelineLayout; // 1
     computePipelineCreateInfo.stage = stageinfo;                // 2
 
-    // store pipeline info in our struct for clarity
-    ComputeEffect gradient;
-    gradient.layout = _gradientPipelineLayout;
-    gradient.name = "gradient";
-    gradient.data = {};
-    gradient.data.data1 = glm::vec4(1, 0, 0, 1);
-    gradient.data.data2 = glm::vec4(0, 0, 1, 1);
-
-    // Create the gradient compute pipeline
-    VK_CHECK(vkCreateComputePipelines(_device, VK_NULL_HANDLE, 1, &computePipelineCreateInfo, nullptr, &gradient.pipeline));
-
-    // Now create the star compute pipeline
-    // reuse the creation info, only difference is the shader. (they use the same layout.)
-    computePipelineCreateInfo.stage.module = skyShader;
-    ComputeEffect sky;
-    sky.layout = _gradientPipelineLayout;
-    sky.name = "sky";
-    sky.data = {};
-    sky.data.data1 = glm::vec4(0.1, 0.2, 0.4, 0.97);
-    VK_CHECK(vkCreateComputePipelines(_device, VK_NULL_HANDLE, 1, &computePipelineCreateInfo, nullptr, &sky.pipeline));
-
-    // add the 2 background effect pipelines into the array
-    backgroundEffects.push_back(gradient);
-    backgroundEffects.push_back(sky);
+    VK_CHECK(vkCreateComputePipelines(_device, VK_NULL_HANDLE, 1, &computePipelineCreateInfo, nullptr, &_backgroundPipeline));
 
     //--------4. cleanup----------------------------------------
-    vkDestroyShaderModule(_device, gradientShader, nullptr);
     vkDestroyShaderModule(_device, skyShader, nullptr);
     _mainDeletionQueue.push_function([=, this]()
     {
-        vkDestroyPipelineLayout(_device, _gradientPipelineLayout, nullptr);
-        vkDestroyPipeline(_device, sky.pipeline, nullptr);
-        vkDestroyPipeline(_device, gradient.pipeline, nullptr); 
+        vkDestroyPipelineLayout(_device, _backgroundPipelineLayout, nullptr);
+        vkDestroyPipeline(_device, _backgroundPipeline, nullptr); 
     });
 }
 
@@ -658,15 +609,15 @@ void VulkanEngine::init_default_data()
     //textures
 	//3 default textures, white, grey, black. 1 pixel each
 	uint32_t white = glm::packUnorm4x8(glm::vec4(1, 1, 1, 1));
-	_whiteImage = create_image((void*)&white, VkExtent3D{ 1, 1, 1 }, VK_FORMAT_R8G8B8A8_UNORM,
+	_whiteImage = vkutil::upload_image(*this, (void*)&white, VkExtent3D{ 1, 1, 1 }, VK_FORMAT_R8G8B8A8_UNORM,
 		VK_IMAGE_USAGE_SAMPLED_BIT);
 
 	uint32_t grey = glm::packUnorm4x8(glm::vec4(0.66f, 0.66f, 0.66f, 1));
-	_greyImage = create_image((void*)&grey, VkExtent3D{ 1, 1, 1 }, VK_FORMAT_R8G8B8A8_UNORM,
+	_greyImage = vkutil::upload_image(*this, (void*)&grey, VkExtent3D{ 1, 1, 1 }, VK_FORMAT_R8G8B8A8_UNORM,
 		VK_IMAGE_USAGE_SAMPLED_BIT);
 
 	uint32_t black = glm::packUnorm4x8(glm::vec4(0, 0, 0, 0.5));
-	_blackImage = create_image((void*)&black, VkExtent3D{ 1, 1, 1 }, VK_FORMAT_R8G8B8A8_UNORM,
+	_blackImage = vkutil::upload_image(*this, (void*)&black, VkExtent3D{ 1, 1, 1 }, VK_FORMAT_R8G8B8A8_UNORM,
 		VK_IMAGE_USAGE_SAMPLED_BIT);
 
 	//checkerboard image
@@ -679,7 +630,7 @@ void VulkanEngine::init_default_data()
 			pixels[y*16 + x] = ((x % 2) ^ (y % 2)) ? magenta : black;
 		}
 	}
-	_errorCheckerboardImage = create_image(pixels.data(), VkExtent3D{16, 16, 1}, VK_FORMAT_R8G8B8A8_UNORM,
+	_errorCheckerboardImage = vkutil::upload_image(*this, pixels.data(), VkExtent3D{16, 16, 1}, VK_FORMAT_R8G8B8A8_UNORM,
 		VK_IMAGE_USAGE_SAMPLED_BIT);
 
 	VkSamplerCreateInfo sampl = {.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO};
@@ -705,10 +656,10 @@ void VulkanEngine::init_default_data()
 		vkDestroySampler(_device,_defaultSamplerLinear,nullptr);
 		vkDestroySampler(_device,_shadowSampler,nullptr);
 
-		destroy_image(_whiteImage);
-		destroy_image(_greyImage);
-		destroy_image(_blackImage);
-		destroy_image(_errorCheckerboardImage);
+		vkutil::destroy_image(_allocator, _device, _whiteImage);
+		vkutil::destroy_image(_allocator, _device, _greyImage);
+		vkutil::destroy_image(_allocator, _device, _blackImage);
+		vkutil::destroy_image(_allocator, _device, _errorCheckerboardImage);
 	});
 }
 
@@ -832,13 +783,10 @@ static void set_viewport_scissor(VkCommandBuffer cmd, VkExtent2D extent)
 
 void VulkanEngine::draw_background(VkCommandBuffer cmd)
 {
-    if (backgroundEffects.empty())
+    if (_backgroundPipeline == VK_NULL_HANDLE)
     {
         return;
     }
-
-    int effectIndex = cvarBackgroundEffect.Get();
-    currentBackgroundEffect = effectIndex;
 
     VkClearColorValue clearValue;
     float flash = std::abs(std::sin(_frameNumber / 120.f));
@@ -848,16 +796,11 @@ void VulkanEngine::draw_background(VkCommandBuffer cmd)
     VkImageSubresourceRange clearRange = vkinit::image_subresource_range(VK_IMAGE_ASPECT_COLOR_BIT); // clear color buffer
     vkCmdClearColorImage(cmd, _drawImage.image, VK_IMAGE_LAYOUT_GENERAL, &clearValue, 1, &clearRange);
 
-    ComputeEffect &effect = backgroundEffects[effectIndex];
-
     // bind the  compute pipeline
-    vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, effect.pipeline);
+    vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, _backgroundPipeline);
 
     // bind the descriptor set containing the draw image for the compute pipeline. Also has push constant layout.
-    vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, effect.layout, 0, 1, &_drawImageDescriptors, 0, nullptr);
-
-    // update our push constants (could have been changed from GUI)
-    vkCmdPushConstants(cmd, effect.layout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(ComputePushConstants), &effect.data);
+    vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, _backgroundPipelineLayout, 0, 1, &_drawImageDescriptors, 0, nullptr);
 
     // execute the compute pipeline dispatch. We are using 16x16 workgroup size so we need to divide by it
     vkCmdDispatch(cmd, std::ceil(_drawExtent.width / 16.0), std::ceil(_drawExtent.height / 16.0), 1);
@@ -912,7 +855,7 @@ void VulkanEngine::draw_geometry(VkCommandBuffer cmd)
     //CREATE PER-FRAME DESCRIPTOR SET (using layout defined in init)-----------------------------------------
 
     //allocate a new UBO for the scene data
-	AllocatedBuffer gpuSceneDataBuffer = create_buffer(sizeof(GPUSceneData), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
+	AllocatedBuffer gpuSceneDataBuffer = vkutil::create_buffer(_allocator, sizeof(GPUSceneData), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
 
     //write the UBO with our cpu data
 	GPUSceneData* sceneUniformData = (GPUSceneData*)gpuSceneDataBuffer.allocation->GetMappedData(); //get cpu pointer to buffer mem
@@ -920,7 +863,7 @@ void VulkanEngine::draw_geometry(VkCommandBuffer cmd)
 
 	get_current_frame()._deletionQueue.push_function([=, this]() 
     {
-		destroy_buffer(gpuSceneDataBuffer);
+		vkutil::destroy_buffer(_allocator, gpuSceneDataBuffer);
 	});
 
 	//create a descriptor set (from layout for per frame data we described in setup)
@@ -1021,12 +964,12 @@ void VulkanEngine::draw_shadow_map(VkCommandBuffer cmd)
     set_viewport_scissor(cmd, shadowExtent);
 
     // create/write perfrmame ds
-	AllocatedBuffer gpuSceneDataBuffer = create_buffer(sizeof(GPUSceneData), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
+	AllocatedBuffer gpuSceneDataBuffer = vkutil::create_buffer(_allocator, sizeof(GPUSceneData), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
 	GPUSceneData* sceneUniformData = (GPUSceneData*)gpuSceneDataBuffer.allocation->GetMappedData(); //get cpu pointer to buffer mem
 	*sceneUniformData = sceneData; //set buffer mem to our cpu side scene data. this is updated in update_scene()
 	get_current_frame()._deletionQueue.push_function([=, this]() 
     {
-		destroy_buffer(gpuSceneDataBuffer);
+		vkutil::destroy_buffer(_allocator, gpuSceneDataBuffer);
 	});
 
 	VkDescriptorSet perFrameDescriptorSet = get_current_frame()._frameDescriptors.allocate(_device, _perFrameDescriptorLayout);
@@ -1358,182 +1301,6 @@ void VulkanEngine::immediate_submit(std::function<void(VkCommandBuffer cmd)> &&f
 
     VK_CHECK(vkWaitForFences(_device, 1, &_immFence, true, 9999999999));
 }
-
-GPUMeshBuffers VulkanEngine::uploadMesh(std::span<uint32_t> indices, std::span<Vertex> vertices)
-{
-    const size_t vertexBufferSize = vertices.size() * sizeof(Vertex);
-    const size_t indexBufferSize = indices.size() * sizeof(uint32_t);
-
-    GPUMeshBuffers newSurface;
-
-    // create vertex buffer
-    newSurface.vertexBuffer = create_buffer(vertexBufferSize,
-                                            VK_BUFFER_USAGE_STORAGE_BUFFER_BIT |           // buffer is an SSBO
-                                                VK_BUFFER_USAGE_TRANSFER_DST_BIT |         // for the next step
-                                                VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT, // we will be taking its pointer
-                                            VMA_MEMORY_USAGE_GPU_ONLY);                    // creating on gpu only memory
-
-    // find the address of the vertex buffer. We give it the VKBuffer.
-    VkBufferDeviceAddressInfo deviceAddressInfo{.sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO, .buffer = newSurface.vertexBuffer.buffer};
-    newSurface.vertexBufferAddress = vkGetBufferDeviceAddress(_device, &deviceAddressInfo);
-
-    // create index buffer
-    newSurface.indexBuffer = create_buffer(indexBufferSize,
-                                           VK_BUFFER_USAGE_INDEX_BUFFER_BIT | // we will be using this for indexed draws
-                                               VK_BUFFER_USAGE_TRANSFER_DST_BIT,
-                                           VMA_MEMORY_USAGE_GPU_ONLY);
-
-    // Now we need to create a staging buffer that we can wite to on the CPU, then copy into the GPU only buffers---------------------
-    AllocatedBuffer staging = create_buffer(vertexBufferSize + indexBufferSize,
-                                            VK_BUFFER_USAGE_TRANSFER_SRC_BIT, // copy source
-                                            VMA_MEMORY_USAGE_CPU_ONLY);       // on CPU ram, GPU can read from it
-
-    // Get CPU pointer to staging buffer memory
-    void *data = staging.allocation->GetMappedData();
-
-    // copy vertex buffer
-    memcpy(data, vertices.data(), vertexBufferSize);
-    // copy index buffer (after vertex buffer data)
-    memcpy((char *)data + vertexBufferSize, indices.data(), indexBufferSize);
-
-    // copy staging buffer data -> gpu buffers
-    // Note that immediate submit stalls the CPU with its fence until this op is done. (usually we should put this on a bg thread)
-    immediate_submit([&](VkCommandBuffer cmd)
-                     {
-        //vertex data
-		VkBufferCopy vertexCopy{ 0 };
-		vertexCopy.dstOffset = 0;
-		vertexCopy.srcOffset = 0;
-		vertexCopy.size = vertexBufferSize;
-		vkCmdCopyBuffer(cmd, staging.buffer, newSurface.vertexBuffer.buffer, 1, &vertexCopy);
-
-        //index data
-		VkBufferCopy indexCopy{ 0 };
-		indexCopy.dstOffset = 0;
-		indexCopy.srcOffset = vertexBufferSize; //after vertex data in staging buffer
-		indexCopy.size = indexBufferSize;
-		vkCmdCopyBuffer(cmd, staging.buffer, newSurface.indexBuffer.buffer, 1, &indexCopy); });
-
-    destroy_buffer(staging);
-
-    return newSurface;
-}
-
-AllocatedBuffer VulkanEngine::create_buffer(size_t allocSize, VkBufferUsageFlags usage, VmaMemoryUsage memoryUsage)
-{
-    // Buffer allocation info for vulkan
-    VkBufferCreateInfo bufferInfo = {.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
-    bufferInfo.pNext = nullptr;
-    bufferInfo.size = allocSize;
-    bufferInfo.usage = usage;
-
-    // allocation info for VMA
-    VmaAllocationCreateInfo vmaallocInfo = {};
-    vmaallocInfo.usage = memoryUsage;                      // we can control where VMA will put the buffer
-    vmaallocInfo.flags = VMA_ALLOCATION_CREATE_MAPPED_BIT; // Map the pointer automiatically so we cna write to the memory, as long as buffer
-    // is accasasble from CPU. Will be stored in newBuffer.info
-
-    // allocate the buffer
-    AllocatedBuffer newBuffer;
-    VK_CHECK(vmaCreateBuffer(_allocator, &bufferInfo, &vmaallocInfo, &newBuffer.buffer, &newBuffer.allocation, &newBuffer.info));
-
-    return newBuffer;
-}
-
-void VulkanEngine::destroy_buffer(const AllocatedBuffer &buffer)
-{
-    vmaDestroyBuffer(_allocator, buffer.buffer, buffer.allocation);
-}
-
-AllocatedImage VulkanEngine::create_image(VkExtent3D size, VkFormat format, VkImageUsageFlags usage, bool mipmapped)
-{
-	AllocatedImage newImage; //the goal is to fill all 5 of its fields
-	newImage.imageFormat = format; //X1
-	newImage.imageExtent = size;   //X2
-
-    //IMAGE ------------------------------------
-	VkImageCreateInfo img_info = vkinit::image_create_info(format, usage, size);
-	if (mipmapped) 
-    {
-		img_info.mipLevels = static_cast<uint32_t>(std::floor(std::log2(std::max(size.width, size.height)))) + 1;
-	}
-
-	// always allocate images on dedicated GPU memory
-	VmaAllocationCreateInfo allocinfo = {};
-	allocinfo.usage = VMA_MEMORY_USAGE_GPU_ONLY;
-	allocinfo.requiredFlags = VkMemoryPropertyFlags(VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
-
-	// allocate and create the image                               X3                     X4
-	VK_CHECK(vmaCreateImage(_allocator, &img_info, &allocinfo, &newImage.image, &newImage.allocation, nullptr));
-
-
-    //IMAGE VIEW-----------------------
-    // VkImageAspectFlags is the format in which we should view the image.
-	VkImageAspectFlags aspectFlag = VK_IMAGE_ASPECT_COLOR_BIT;
-	if (format == VK_FORMAT_D32_SFLOAT) 
-    {
-		aspectFlag = VK_IMAGE_ASPECT_DEPTH_BIT;
-	}
-	VkImageViewCreateInfo view_info = vkinit::imageview_create_info(format, newImage.image, aspectFlag);
-	view_info.subresourceRange.levelCount = img_info.mipLevels;
-
-    //                                                                  X5
-	VK_CHECK(vkCreateImageView(_device, &view_info, nullptr, &newImage.imageView));
-
-	return newImage;
-}
-
-AllocatedImage VulkanEngine::create_image(void *data, VkExtent3D size, VkFormat format, VkImageUsageFlags usage, bool mipmapped)
-{
-    //create upload buffer
-    size_t data_size = size.depth * size.width * size.height * 4;
-	AllocatedBuffer uploadbuffer = create_buffer(data_size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
-	memcpy(uploadbuffer.info.pMappedData, data, data_size);
-
-    //create empty image
-	AllocatedImage new_image = create_image(size, format, usage | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT, mipmapped);
-
-    //copy upload buffer into empty image
-    //(stall)
-	immediate_submit([&](VkCommandBuffer cmd) 
-    {
-		vkutil::transition_image(cmd, new_image.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_ASPECT_COLOR_BIT);
-
-		VkBufferImageCopy copyRegion = {};
-		copyRegion.bufferOffset = 0;
-		copyRegion.bufferRowLength = 0;
-		copyRegion.bufferImageHeight = 0;
-
-		copyRegion.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-		copyRegion.imageSubresource.mipLevel = 0;
-		copyRegion.imageSubresource.baseArrayLayer = 0;
-		copyRegion.imageSubresource.layerCount = 1;
-		copyRegion.imageExtent = size;
-
-		// copy the buffer into the image
-		vkCmdCopyBufferToImage(cmd, uploadbuffer.buffer, new_image.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copyRegion);
-
-        if (mipmapped) 
-        {
-            vkutil::generate_mipmaps(cmd, new_image.image, VkExtent2D{new_image.imageExtent.width,new_image.imageExtent.height});
-        } 
-        else 
-        {
-            vkutil::transition_image(cmd, new_image.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_ASPECT_COLOR_BIT);
-        }
-	});
-
-	destroy_buffer(uploadbuffer);
-
-	return new_image;
-}
-
-void VulkanEngine::destroy_image(const AllocatedImage &img)
-{
-    vkDestroyImageView(_device, img.imageView, nullptr);
-    vmaDestroyImage(_allocator, img.image, img.allocation);
-}
-
 
 //---------------------------------------------------------------------------------------------
 //-----------------------------GLTFMetallic_Roughness------------------------------------------

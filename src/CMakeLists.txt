@@ -7,6 +7,10 @@ add_executable (engine
   vk_initializers.h
   vk_images.h
   vk_images.cpp 
+  vk_resources.h
+  vk_resources.cpp
+  vk_upload.h
+  vk_upload.cpp
   vk_descriptors.h
   vk_descriptors.cpp
   vk_pipelines.h

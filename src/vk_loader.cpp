@@ -1,4 +1,4 @@
-﻿#include <vk_loader.h>
+#include <vk_loader.h>
 
 #include "stb_image.h"
 #include <iostream>
@@ -6,6 +6,8 @@
 
 #include "vk_engine.h"
 #include "vk_initializers.h"
+#include "vk_resources.h"
+#include "vk_upload.h"
 #include "vk_types.h"
 #include <glm/gtx/quaternion.hpp>
 
@@ -95,7 +97,7 @@ std::optional<AllocatedImage> load_image(VulkanEngine* engine, fastgltf::Asset& 
                     imagesize.height = height;
                     imagesize.depth = 1;
 
-                    newImage = engine->create_image(data, imagesize, format, VK_IMAGE_USAGE_SAMPLED_BIT,true);
+                    newImage = vkutil::upload_image(*engine, data, imagesize, format, VK_IMAGE_USAGE_SAMPLED_BIT, true);
 
                     stbi_image_free(data);
                 }
@@ -110,7 +112,7 @@ std::optional<AllocatedImage> load_image(VulkanEngine* engine, fastgltf::Asset& 
                     imagesize.height = height;
                     imagesize.depth = 1;
 
-                    newImage = engine->create_image(data, imagesize, format, VK_IMAGE_USAGE_SAMPLED_BIT,true);
+                    newImage = vkutil::upload_image(*engine, data, imagesize, format, VK_IMAGE_USAGE_SAMPLED_BIT, true);
 
                     stbi_image_free(data);
                 }
@@ -126,7 +128,7 @@ std::optional<AllocatedImage> load_image(VulkanEngine* engine, fastgltf::Asset& 
                     imagesize.height = height;
                     imagesize.depth = 1;
 
-                    newImage = engine->create_image(data, imagesize, format, VK_IMAGE_USAGE_SAMPLED_BIT, true);
+                    newImage = vkutil::upload_image(*engine, data, imagesize, format, VK_IMAGE_USAGE_SAMPLED_BIT, true);
 
                     stbi_image_free(data);
                 }
@@ -148,7 +150,7 @@ std::optional<AllocatedImage> load_image(VulkanEngine* engine, fastgltf::Asset& 
                                        imagesize.height = height;
                                        imagesize.depth = 1;
 
-                                       newImage = engine->create_image(data, imagesize, format,
+                                       newImage = vkutil::upload_image(*engine, data, imagesize, format,
                                            VK_IMAGE_USAGE_SAMPLED_BIT,true);
 
                                        stbi_image_free(data);
@@ -165,7 +167,7 @@ std::optional<AllocatedImage> load_image(VulkanEngine* engine, fastgltf::Asset& 
                                        imagesize.height = height;
                                        imagesize.depth = 1;
 
-                                       newImage = engine->create_image(data, imagesize, format,
+                                       newImage = vkutil::upload_image(*engine, data, imagesize, format,
                                            VK_IMAGE_USAGE_SAMPLED_BIT, true);
 
                                        stbi_image_free(data);
@@ -247,7 +249,7 @@ std::optional<std::shared_ptr<LoadedGLTF>> loadGltf(VulkanEngine *engine, std::f
         { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 3 },          
         { VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1 } 
     }; //one for each mateiral usually
-    file.descriptorPool.init(engine->_device, gltf.materials.size(), sizes);
+    file.descriptorPool.init(engine->device(), gltf.materials.size(), sizes);
 
     // load samplers
     for (fastgltf::Sampler& sampler : gltf.samplers) 
@@ -261,7 +263,7 @@ std::optional<std::shared_ptr<LoadedGLTF>> loadGltf(VulkanEngine *engine, std::f
         sampl.mipmapMode= extract_mipmap_mode(sampler.minFilter.value_or(fastgltf::Filter::Nearest));
 
         VkSampler newSampler;
-        vkCreateSampler(engine->_device, &sampl, nullptr, &newSampler);
+        vkCreateSampler(engine->device(), &sampl, nullptr, &newSampler);
 
         file.samplers.push_back(newSampler);
     }
@@ -285,7 +287,7 @@ std::optional<std::shared_ptr<LoadedGLTF>> loadGltf(VulkanEngine *engine, std::f
 
         std::optional<AllocatedImage> img = load_image(engine, gltf, gltf.images[imageIndex], path.parent_path(), format);
 
-        AllocatedImage finalImage = img.value_or(engine->_errorCheckerboardImage);
+        AllocatedImage finalImage = img.value_or(engine->error_checkerboard_image());
 
         imageCache[key] = finalImage;
         file.images[key] = finalImage; // ownership for cleanup
@@ -295,7 +297,7 @@ std::optional<std::shared_ptr<LoadedGLTF>> loadGltf(VulkanEngine *engine, std::f
 
      // create buffer to hold all the material CONSTANTS
      // these are part of the gltf pbr standard
-    file.materialDataBuffer = engine->create_buffer(sizeof(GLTFMetallic_Roughness::MaterialConstants) * gltf.materials.size(),
+    file.materialDataBuffer = vkutil::create_buffer(engine->allocator(), sizeof(GLTFMetallic_Roughness::MaterialConstants) * gltf.materials.size(),
         VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
     int data_index = 0;
 
@@ -343,12 +345,12 @@ std::optional<std::shared_ptr<LoadedGLTF>> loadGltf(VulkanEngine *engine, std::f
         GLTFMetallic_Roughness::MaterialResources materialResources;
 
         // default the material textures
-        materialResources.colorImage = engine->_whiteImage;
-        materialResources.colorSampler = engine->_defaultSamplerLinear;
-        materialResources.metalRoughImage = engine->_blackImage;
-        materialResources.metalRoughSampler = engine->_defaultSamplerLinear;
-        materialResources.normalImage = engine->_whiteImage;
-        materialResources.normalSampler = engine->_defaultSamplerLinear;
+        materialResources.colorImage = engine->white_image();
+        materialResources.colorSampler = engine->default_sampler_linear();
+        materialResources.metalRoughImage = engine->black_image();
+        materialResources.metalRoughSampler = engine->default_sampler_linear();
+        materialResources.normalImage = engine->white_image();
+        materialResources.normalSampler = engine->default_sampler_linear();
 
 
         // MaterialConstants we made earlier
@@ -407,7 +409,7 @@ std::optional<std::shared_ptr<LoadedGLTF>> loadGltf(VulkanEngine *engine, std::f
         //------------------------------------------------------------------------------------------------
 
         // build material
-        newMat->data = engine->metalRoughMaterial.write_material(engine->_device, passType, materialResources, file.descriptorPool);
+        newMat->data = engine->material_system().write_material(engine->device(), passType, materialResources, file.descriptorPool);
 
         //note we jump by size of MaterialConstants
         data_index++;
@@ -558,7 +560,7 @@ std::optional<std::shared_ptr<LoadedGLTF>> loadGltf(VulkanEngine *engine, std::f
 
 
         //vertex/index buffer done
-        newmesh->meshBuffers = engine->uploadMesh(indices, vertices);
+        newmesh->meshBuffers = vkutil::upload_mesh(*engine, indices, vertices);
     }
 
 
@@ -644,29 +646,29 @@ void LoadedGLTF::Draw(const glm::mat4 &topMatrix, DrawContext &ctx)
 
 void LoadedGLTF::clearAll()
 {
-    VkDevice dv = creator->_device;
+    VkDevice dv = creator->device();
 
     //descriptor Pool
     descriptorPool.destroy_pools(dv);
 
     //uniform buffer
-    creator->destroy_buffer(materialDataBuffer);
+    vkutil::destroy_buffer(creator->allocator(), materialDataBuffer);
 
     for (auto& [k, v] : meshes) 
     {
-		creator->destroy_buffer(v->meshBuffers.indexBuffer);
-		creator->destroy_buffer(v->meshBuffers.vertexBuffer);
+		vkutil::destroy_buffer(creator->allocator(), v->meshBuffers.indexBuffer);
+		vkutil::destroy_buffer(creator->allocator(), v->meshBuffers.vertexBuffer);
     }
 
     for (auto& [k, v] : images) 
     {
         
-        if (v.image == creator->_errorCheckerboardImage.image) 
+        if (v.image == creator->error_checkerboard_image().image) 
         {
             continue;
         }
 
-        creator->destroy_image(v);
+        vkutil::destroy_image(creator->allocator(), creator->device(), v);
     }
 
 	for (auto& sampler : samplers) 
