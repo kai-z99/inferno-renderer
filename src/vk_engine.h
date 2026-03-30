@@ -5,6 +5,7 @@
 
 #include <vk_types.h>
 #include <vk_descriptors.h>
+#include <vk_materials.h>
 #include <vk_loader.h> 
 #include <camera.h>
 
@@ -39,44 +40,6 @@ struct FrameData
 
 	DeletionQueue _deletionQueue;
 	DescriptorAllocatorGrowable _frameDescriptors;
-};
-
-struct GLTFMetallic_Roughness 
-{
-	MaterialPipeline opaquePipeline;
-	MaterialPipeline transparentPipeline;
-
-	VkDescriptorSetLayout materialLayout;
-
-	//to be written into UBO
-	struct MaterialConstants 
-	{
-		glm::vec4 colorFactors;
-		glm::vec4 metal_rough_factors;
-		//padding, we need it anyway for uniform buffers
-		glm::vec4 extra[14];
-	};
-
-	//for descriptor set
-	struct MaterialResources 
-	{
-		AllocatedImage colorImage;
-		VkSampler colorSampler;
-		AllocatedImage metalRoughImage;
-		VkSampler metalRoughSampler;
-		AllocatedImage normalImage;
-		VkSampler normalSampler;
-		VkBuffer dataBuffer; //MaterialConstants ^
-		uint32_t dataBufferOffset;
-	};
-
-	DescriptorWriter writer;
-
-	void build_pipelines(VulkanEngine* engine);
-	void clear_resources(VkDevice device);
-
-	//Return a MaterialInstance, which holds pipeline, descriptor set and pass associated with the material.
-	MaterialInstance write_material(VkDevice device, MaterialPass pass, const MaterialResources& resources, DescriptorAllocatorGrowable& descriptorAllocator);
 };
 
 //rendering-----
@@ -129,6 +92,7 @@ public:
 	const AllocatedImage& black_image() const { return _blackImage; }
 	const AllocatedImage& error_checkerboard_image() const { return _errorCheckerboardImage; }
 	VkSampler default_sampler_linear() const { return _defaultSamplerLinear; }
+	
 	void immediate_submit(std::function<void(VkCommandBuffer cmd)>&& function);
 
 private:

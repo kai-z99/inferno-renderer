@@ -867,7 +867,7 @@ void VulkanEngine::draw_geometry(VkCommandBuffer cmd)
 	});
 
 	//create a descriptor set (from layout for per frame data we described in setup)
-	VkDescriptorSet globalDescriptor = get_current_frame()._frameDescriptors.allocate(_device, _perFrameDescriptorLayout);
+	VkDescriptorSet perFrameDescriptor = get_current_frame()._frameDescriptors.allocate(_device, _perFrameDescriptorLayout);
 
 	DescriptorWriter writer;
     //bind our buffer data to binding 0 of that descriptor set.
@@ -879,8 +879,10 @@ void VulkanEngine::draw_geometry(VkCommandBuffer cmd)
         _shadowSampler,
         VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_OPTIMAL,
         VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
-	writer.update_set(_device, globalDescriptor); 
+	writer.update_set(_device, perFrameDescriptor); 
     //-------------------------------------------------------------------------------------------------------
+
+    //no need for material descriptor, as its been written duing loadgltfs.
     
     // draw all meshes (RenderObjects)
     // note calling MeshNode::Draw in update() fills mainDrawContext with RenderObjects 
@@ -899,7 +901,7 @@ void VulkanEngine::draw_geometry(VkCommandBuffer cmd)
                 lastPipeline = r.material->pipeline;
                 vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, r.material->pipeline->pipeline);
                 vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,r.material->pipeline->layout, 0, 1,
-                    &globalDescriptor, 0, nullptr);
+                    &perFrameDescriptor, 0, nullptr);
                 
                 set_viewport_scissor(cmd, _drawExtent);
             }
@@ -1301,138 +1303,6 @@ void VulkanEngine::immediate_submit(std::function<void(VkCommandBuffer cmd)> &&f
 
     VK_CHECK(vkWaitForFences(_device, 1, &_immFence, true, 9999999999));
 }
-
-//---------------------------------------------------------------------------------------------
-//-----------------------------GLTFMetallic_Roughness------------------------------------------
-//---------------------------------------------------------------------------------------------
-
-void GLTFMetallic_Roughness::build_pipelines(VulkanEngine *engine)
-{
-    VkShaderModule meshFragShader;
-	if (!vkutil::load_shader_module("shaders/mesh.frag.spv", engine->_device, &meshFragShader)) 
-    {
-		fmt::println("Error when building the triangle fragment shader module\n");
-	}
-
-	VkShaderModule meshVertexShader;
-	if (!vkutil::load_shader_module("shaders/mesh.vert.spv", engine->_device, &meshVertexShader)) 
-    {
-		fmt::println("Error when building the triangle vertex shader module\n");
-	}
-
-    //push constants----------------------------
-	VkPushConstantRange matrixRange{};
-	matrixRange.offset = 0;
-	matrixRange.size = sizeof(GPUDrawPushConstants);
-	matrixRange.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
-
-    //descriptor set layout for material----------------------------
-    DescriptorLayoutBuilder layoutBuilder;
-    layoutBuilder.add_binding(0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
-    layoutBuilder.add_binding(1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER); //albdeo
-	layoutBuilder.add_binding(2, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER); //metal-rough
-    layoutBuilder.add_binding(3, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER); //nomal
-
-    //no cleanup for this yet.
-    materialLayout = layoutBuilder.build(engine->_device, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT);
-
-    //0:_perFrameDescriptorLayout has layout for per-frame like matrices etc.
-    //1: materialLayout has layout for materials
-	VkDescriptorSetLayout layouts[] = { engine->_perFrameDescriptorLayout, materialLayout};
-
-    //create the pipeline layout with our push constants/descriptor layouts
-	VkPipelineLayoutCreateInfo mesh_layout_info = vkinit::pipeline_layout_create_info();
-	mesh_layout_info.setLayoutCount = 2; //2 descriptor sets for this pipeline. (one for material, one for per-frame)
-	mesh_layout_info.pSetLayouts = layouts; //specify what 2 sets
-	mesh_layout_info.pPushConstantRanges = &matrixRange; //push constants are for per-object like worldMatrix
-	mesh_layout_info.pushConstantRangeCount = 1;
-	VkPipelineLayout meshPipelineLayout;
-	VK_CHECK(vkCreatePipelineLayout(engine->_device, &mesh_layout_info, nullptr, &meshPipelineLayout));
-
-    //both pipelines will use the same layout.
-    //no cleanup for these guys yet
-    opaquePipeline.layout = meshPipelineLayout;
-    transparentPipeline.layout = meshPipelineLayout;
-
-	// build the stage-create-info for both vertex and fragment stages. This lets
-	// the pipeline know the shader modules per stage
-	PipelineBuilder pipelineBuilder;
-	pipelineBuilder.set_shaders(meshVertexShader, meshFragShader);
-	pipelineBuilder.set_input_topology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
-	pipelineBuilder.set_polygon_mode(VK_POLYGON_MODE_FILL);
-	pipelineBuilder.set_cull_mode(VK_CULL_MODE_NONE, VK_FRONT_FACE_CLOCKWISE);
-	pipelineBuilder.set_multisampling_none();
-	pipelineBuilder.disable_blending();
-	pipelineBuilder.enable_depthtest(true, VK_COMPARE_OP_GREATER_OR_EQUAL);
-
-	//render format
-	pipelineBuilder.set_color_attachment_format(engine->_drawImage.imageFormat);
-	pipelineBuilder.set_depth_format(engine->_depthImage.imageFormat);
-
-	// use the layout we created
-	pipelineBuilder._pipelineLayout = meshPipelineLayout;
-
-	// finally build the pipeline
-    opaquePipeline.pipeline = pipelineBuilder.build_pipeline(engine->_device);
-
-	// create the transparent variant
-	pipelineBuilder.enable_blending_additive();
-
-	pipelineBuilder.enable_depthtest(false, VK_COMPARE_OP_GREATER_OR_EQUAL);
-
-	transparentPipeline.pipeline = pipelineBuilder.build_pipeline(engine->_device);
-	
-	vkDestroyShaderModule(engine->_device, meshFragShader, nullptr);
-	vkDestroyShaderModule(engine->_device, meshVertexShader, nullptr);
-
-    //cleanup
-    engine->_mainDeletionQueue.push_function([=, this]()
-    { 
-        vkDestroyPipelineLayout(engine->_device, meshPipelineLayout, nullptr);
-        vkDestroyPipeline(engine->_device, transparentPipeline.pipeline, nullptr);
-        vkDestroyPipeline(engine->_device, opaquePipeline.pipeline, nullptr);
-        vkDestroyDescriptorSetLayout(engine->_device, materialLayout, nullptr);
-    });
-
-
-}
-
-void GLTFMetallic_Roughness::clear_resources(VkDevice device)
-{
-
-}
-
-MaterialInstance GLTFMetallic_Roughness::write_material(VkDevice device, MaterialPass pass, const MaterialResources &resources, DescriptorAllocatorGrowable &descriptorAllocator)
-{
-    MaterialInstance matData;
-
-    //PASS TYPE-----------------------------------------------------
-	matData.passType = pass;
-
-    //PIPELINE-----------------------------------------------------
-	if (pass == MaterialPass::Transparent) 
-    {
-		matData.pipeline = &transparentPipeline;
-	}
-	else 
-    {
-		matData.pipeline = &opaquePipeline;
-	}
-    
-    //DESCRIPTOR SET--------------------------------------------------
-	matData.materialSet = descriptorAllocator.allocate(device, materialLayout);
-
-	writer.clear();
-	writer.write_buffer(0, resources.dataBuffer, sizeof(MaterialConstants), resources.dataBufferOffset, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
-	writer.write_image(1, resources.colorImage.imageView, resources.colorSampler, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
-	writer.write_image(2, resources.metalRoughImage.imageView, resources.metalRoughSampler, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
-    writer.write_image(3, resources.normalImage.imageView, resources.normalSampler, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
-
-	writer.update_set(device, matData.materialSet);
-
-	return matData;
-}
-
 
 //MESH------------------------------
 
