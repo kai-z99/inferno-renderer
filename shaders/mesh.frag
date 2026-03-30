@@ -9,6 +9,7 @@ layout (location = 0) in vec3 inNormal;
 layout (location = 1) in vec3 inColor;
 layout (location = 2) in vec2 inUV;
 layout (location = 3) in vec4 inFragPosWorld;
+layout (location = 4) in vec4 inTangent;
 
 layout (location = 0) out vec4 outFragColor;
 
@@ -18,7 +19,15 @@ void main()
 	float lightPower = sceneData.sunlightDirection.w;
 	vec3 lightDir = normalize(sceneData.sunlightDirection.xyz);
 	vec3 viewDir =  normalize(inFragPosWorld.xyz - sceneData.camPos.xyz);
-	vec3 normal = normalize(inNormal);
+
+	vec3 T = normalize(inTangent.xyz);
+	vec3 N = normalize(inNormal);
+	vec3 B = normalize(cross(N, T) * inTangent.w);
+	mat3 TBN = mat3(T, B, N);
+
+	vec3 normalTangentSpace = texture(normalTex, inUV).xyz;
+	vec3 normal = normalize(TBN * normalTangentSpace);
+
 	vec3 albedo = texture(colorTex, inUV).rgb * materialData.colorFactors.rgb;
 	float metallic = texture(metalRoughTex, inUV).b * materialData.metal_rough_factors.x;
 	float roughness = texture(metalRoughTex, inUV).g * materialData.metal_rough_factors.y;

@@ -9,6 +9,7 @@ layout (location = 0) out vec3 outNormal;
 layout (location = 1) out vec3 outColor;
 layout (location = 2) out vec2 outUV;
 layout (location = 3) out vec4 outFragPosWorld;
+layout (location = 4) out vec4 outTangent;
 
 struct Vertex 
 {
@@ -17,6 +18,7 @@ struct Vertex
 	vec3 normal;
 	float uv_y;
 	vec4 color;
+	vec4 tangent;
 }; 
 
 layout(buffer_reference, std430) readonly buffer VertexBuffer
@@ -35,14 +37,21 @@ layout( push_constant ) uniform constants
 void main() 
 {
 	Vertex v = PushConstants.vertexBuffer.vertices[gl_VertexIndex];
-	
 	vec4 position = vec4(v.position, 1.0f);
 
+	//pos
 	outFragPosWorld = PushConstants.render_matrix * position;
-	gl_Position = sceneData.viewproj * PushConstants.render_matrix * position;
+	gl_Position 	= sceneData.viewproj * PushConstants.render_matrix * position;
 
-	outNormal = (PushConstants.render_matrix * vec4(v.normal, 0.f)).xyz;
-	outColor = v.color.xyz * materialData.colorFactors.xyz;	
-	outUV.x = v.uv_x;
-	outUV.y = v.uv_y;
+	//normal/tangent
+	outNormal 	   	= (PushConstants.render_matrix * vec4(v.normal, 0.0)).xyz;
+	outTangent.xyz 	= (PushConstants.render_matrix * vec4(v.tangent.xyz, 0.0)).xyz;
+	outTangent.w 	= v.tangent.w;
+
+	//color
+	outColor 		= v.color.xyz * materialData.colorFactors.xyz;	
+	
+	//uv
+	outUV.x 		= v.uv_x;
+	outUV.y 		= v.uv_y;
 }

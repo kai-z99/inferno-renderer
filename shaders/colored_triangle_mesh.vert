@@ -12,6 +12,7 @@ struct Vertex
 	vec3 normal;
 	float uv_y;
 	vec4 color;
+	vec4 tangent;
 }; 
 
 //declare the vertex buffer, (buffer device address)

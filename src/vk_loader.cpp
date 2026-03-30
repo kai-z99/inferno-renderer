@@ -347,6 +347,9 @@ std::optional<std::shared_ptr<LoadedGLTF>> loadGltf(VulkanEngine *engine, std::f
         materialResources.colorSampler = engine->_defaultSamplerLinear;
         materialResources.metalRoughImage = engine->_blackImage;
         materialResources.metalRoughSampler = engine->_defaultSamplerLinear;
+        materialResources.normalImage = engine->_whiteImage;
+        materialResources.normalSampler = engine->_defaultSamplerLinear;
+
 
         // MaterialConstants we made earlier
         materialResources.dataBuffer = file.materialDataBuffer.buffer;
@@ -384,6 +387,23 @@ std::optional<std::shared_ptr<LoadedGLTF>> loadGltf(VulkanEngine *engine, std::f
                 materialResources.metalRoughSampler = file.samplers[*tex.samplerIndex];
             }
         }
+
+        if (mat.normalTexture.has_value())
+        {
+            const auto texIndex = mat.normalTexture->textureIndex;
+            const auto& tex = gltf.textures[texIndex];
+
+            if (auto imageIndex = resolve_texture_image_index(tex); imageIndex.has_value())
+            {
+                materialResources.normalImage = get_cached_image(*imageIndex, VK_FORMAT_R8G8B8A8_UNORM);
+            }
+            if (tex.samplerIndex.has_value())
+            {
+                materialResources.normalSampler = file.samplers[*tex.samplerIndex];
+            }
+        }
+
+
         //------------------------------------------------------------------------------------------------
 
         // build material
@@ -460,6 +480,24 @@ std::optional<std::shared_ptr<LoadedGLTF>> loadGltf(VulkanEngine *engine, std::f
                     {
                         vertices[initial_vtx + index].normal = v;
                     });
+            }
+
+            // load vertex tangents/bitangants
+            auto tangents = p.findAttribute("TANGENT");
+            if (tangents != p.attributes.end())
+            {
+                fastgltf::iterateAccessorWithIndex<glm::vec4>(gltf, gltf.accessors[tangents->second],
+                    [&](glm::vec4 tangent, size_t index)
+                    {
+                        vertices[initial_vtx + index].tangent = tangent;
+                    });
+            }
+            else
+            {
+                for (size_t i = initial_vtx; i < vertices.size(); i++)
+                {
+                    vertices[i].tangent = glm::vec4(1.f, 0.f, 0.f, 1.f);
+                }
             }
 
             // load UVs

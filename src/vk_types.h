@@ -47,6 +47,7 @@ struct Vertex
 	glm::vec3 normal;
 	float uv_y;
 	glm::vec4 color;
+    glm::vec4 tangent; //w is bitangent sign
 };
 
 // holds the resources needed for a mesh

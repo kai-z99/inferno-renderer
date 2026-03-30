@@ -120,9 +120,10 @@ void VulkanEngine::init()
     mainCamera.pitch = 0;
     mainCamera.yaw = 0;
 
-
     //init scene
     std::string structurePath = { "assets/sponza/Sponza.gltf" };
+    //std::string structurePath = { "assets/donutWithPBR.glb" };
+    //std::string structurePath = { "assets/ABeautifulGame.glb" };
     auto structureFile = loadGltf(this, structurePath);
 
     assert(structureFile.has_value());
@@ -131,7 +132,6 @@ void VulkanEngine::init()
 
     // everything went fine
     _isInitialized = true;
-
 
     fmt::print("Initialization complete!\n");
 }
@@ -1242,7 +1242,7 @@ glm::mat4 VulkanEngine::get_sun_matrix()
     glm::vec3 camForward = glm::normalize(glm::vec3(mainCamera.getRotationMatrix() * glm::vec4(0.f, 0.f, -1.f, 0.f)));
     glm::vec3 shadowCenter = {0,0,0}; //just an estimate
 
-    glm::vec3 lightPos = shadowCenter - lightDir * 5.0f;
+    glm::vec3 lightPos = shadowCenter - lightDir * 25.0f;
 
     glm::vec3 up = (std::abs(lightDir.y) > 0.99f) ? glm::vec3(0, 0, 1) : glm::vec3(0, 1, 0);
     glm::mat4 lightView = glm::lookAt(lightPos, shadowCenter, up);
@@ -1564,6 +1564,8 @@ void GLTFMetallic_Roughness::build_pipelines(VulkanEngine *engine)
     layoutBuilder.add_binding(0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
     layoutBuilder.add_binding(1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER); //albdeo
 	layoutBuilder.add_binding(2, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER); //metal-rough
+    layoutBuilder.add_binding(3, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER); //nomal
+
     //no cleanup for this yet.
     materialLayout = layoutBuilder.build(engine->_device, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT);
 
@@ -1657,6 +1659,7 @@ MaterialInstance GLTFMetallic_Roughness::write_material(VkDevice device, Materia
 	writer.write_buffer(0, resources.dataBuffer, sizeof(MaterialConstants), resources.dataBufferOffset, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
 	writer.write_image(1, resources.colorImage.imageView, resources.colorSampler, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
 	writer.write_image(2, resources.metalRoughImage.imageView, resources.metalRoughSampler, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
+    writer.write_image(3, resources.normalImage.imageView, resources.normalSampler, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
 
 	writer.update_set(device, matData.materialSet);
 
