@@ -153,7 +153,7 @@ private:
 	GLTFMetallic_Roughness _metalRoughMaterial;
 
 	// scene state
-	GPUSceneData sceneData;
+	PerFrameData_GPU perFrameDataGPU;
 	Camera mainCamera;
 	DrawContext mainDrawContext;
 	std::unordered_map<std::string, std::shared_ptr<LoadedGLTF>> loadedScenes;

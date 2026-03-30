@@ -373,7 +373,7 @@ void VulkanEngine::init_descriptors()
     // GLTF PIPELINE: descriptor for per frame resources
     {
         DescriptorLayoutBuilder builder;
-        builder.add_binding(0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER); //ubo (GPUSceneData)
+        builder.add_binding(0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER); //ubo (PerFrameData_GPU)
         builder.add_binding(1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER); //shadowmap
 
         _perFrameDescriptorLayout = builder.build(_device, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT);
@@ -490,7 +490,7 @@ void VulkanEngine::init_shadow_pipeline()
 
     VkPushConstantRange pushRange{};
     pushRange.offset = 0;
-    pushRange.size = sizeof(GPUDrawPushConstants);
+    pushRange.size = sizeof(PerObjectData_GPU);
     pushRange.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
 
     VkPipelineLayoutCreateInfo layoutInfo = vkinit::pipeline_layout_create_info();
@@ -823,7 +823,7 @@ void VulkanEngine::draw_geometry(VkCommandBuffer cmd)
 
     for (uint32_t i = 0; i < mainDrawContext.OpaqueSurfaces.size(); i++) 
     {
-        if (is_visible_basic(mainDrawContext.OpaqueSurfaces[i], sceneData.viewproj))
+        if (is_visible_basic(mainDrawContext.OpaqueSurfaces[i], perFrameDataGPU.viewproj))
         opaque_draws.push_back(i);
     }
 
@@ -860,11 +860,11 @@ void VulkanEngine::draw_geometry(VkCommandBuffer cmd)
     //CREATE PER-FRAME DESCRIPTOR SET (using layout defined in init)-----------------------------------------
 
     //allocate a new UBO for the scene data
-	AllocatedBuffer gpuSceneDataBuffer = vkutil::create_buffer(_allocator, sizeof(GPUSceneData), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
+	AllocatedBuffer gpuSceneDataBuffer = vkutil::create_buffer(_allocator, sizeof(PerFrameData_GPU), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
 
     //write the UBO with our cpu data
-	GPUSceneData* sceneUniformData = (GPUSceneData*)gpuSceneDataBuffer.allocation->GetMappedData(); //get cpu pointer to buffer mem
-	*sceneUniformData = sceneData; //set buffer mem to our cpu side scene data. this is updated in update_scene()
+	PerFrameData_GPU* sceneUniformData = (PerFrameData_GPU*)gpuSceneDataBuffer.allocation->GetMappedData(); //get cpu pointer to buffer mem
+	*sceneUniformData = perFrameDataGPU; //set buffer mem to our cpu side scene data. this is updated in update_scene()
 
 	get_current_frame()._deletionQueue.push_function([=, this]() 
     {
@@ -877,7 +877,7 @@ void VulkanEngine::draw_geometry(VkCommandBuffer cmd)
 	DescriptorWriter writer;
     //bind our buffer data to binding 0 of that descriptor set.
     //             binding 0                                              set 0
-	writer.write_buffer(0, gpuSceneDataBuffer.buffer, sizeof(GPUSceneData), 0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER); 
+	writer.write_buffer(0, gpuSceneDataBuffer.buffer, sizeof(PerFrameData_GPU), 0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER); 
     //shadow map in binding 1
     writer.write_image(1,
         _shadowDepthImage.imageView,
@@ -922,10 +922,10 @@ void VulkanEngine::draw_geometry(VkCommandBuffer cmd)
         }
         
         //bind push constants
-        GPUDrawPushConstants pushConstants;
+        PerObjectData_GPU pushConstants;
         pushConstants.vertexBuffer = r.vertexBufferAddress;
         pushConstants.worldMatrix = r.transform;
-        vkCmdPushConstants(cmd, r.material->pipeline->layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(GPUDrawPushConstants), &pushConstants);
+        vkCmdPushConstants(cmd, r.material->pipeline->layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(PerObjectData_GPU), &pushConstants);
 
         //draw
         vkCmdDrawIndexed(cmd, r.indexCount, 1, r.firstIndex, 0, 0);
@@ -971,9 +971,9 @@ void VulkanEngine::draw_shadow_map(VkCommandBuffer cmd)
     set_viewport_scissor(cmd, shadowExtent);
 
     // create/write perfrmame ds
-	AllocatedBuffer gpuSceneDataBuffer = vkutil::create_buffer(_allocator, sizeof(GPUSceneData), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
-	GPUSceneData* sceneUniformData = (GPUSceneData*)gpuSceneDataBuffer.allocation->GetMappedData(); //get cpu pointer to buffer mem
-	*sceneUniformData = sceneData; //set buffer mem to our cpu side scene data. this is updated in update_scene()
+	AllocatedBuffer gpuSceneDataBuffer = vkutil::create_buffer(_allocator, sizeof(PerFrameData_GPU), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
+	PerFrameData_GPU* sceneUniformData = (PerFrameData_GPU*)gpuSceneDataBuffer.allocation->GetMappedData(); //get cpu pointer to buffer mem
+	*sceneUniformData = perFrameDataGPU; //set buffer mem to our cpu side scene data. this is updated in update_scene()
 	get_current_frame()._deletionQueue.push_function([=, this]() 
     {
 		vkutil::destroy_buffer(_allocator, gpuSceneDataBuffer);
@@ -981,7 +981,7 @@ void VulkanEngine::draw_shadow_map(VkCommandBuffer cmd)
 
 	VkDescriptorSet perFrameDescriptorSet = get_current_frame()._frameDescriptors.allocate(_device, _perFrameDescriptorLayout);
 	DescriptorWriter writer;
-	writer.write_buffer(0, gpuSceneDataBuffer.buffer, sizeof(GPUSceneData), 0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER); 
+	writer.write_buffer(0, gpuSceneDataBuffer.buffer, sizeof(PerFrameData_GPU), 0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER); 
 	writer.update_set(_device, perFrameDescriptorSet); 
 
 
@@ -993,10 +993,10 @@ void VulkanEngine::draw_shadow_map(VkCommandBuffer cmd)
     for (RenderObject& r : mainDrawContext.OpaqueSurfaces)
     {
         //bind push constants
-        GPUDrawPushConstants pushConstants;
+        PerObjectData_GPU pushConstants;
         pushConstants.vertexBuffer = r.vertexBufferAddress;
         pushConstants.worldMatrix = r.transform;
-        vkCmdPushConstants(cmd, _shadowPipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(GPUDrawPushConstants), &pushConstants);
+        vkCmdPushConstants(cmd, _shadowPipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(PerObjectData_GPU), &pushConstants);
 
         vkCmdBindIndexBuffer(cmd, r.indexBuffer, 0, VK_INDEX_TYPE_UINT32);
 
@@ -1164,14 +1164,14 @@ void VulkanEngine::update_scene()
     projection[1][1] *= -1;
 
     //update per frame data
-    sceneData.view = view;
-    sceneData.proj = projection;
-    sceneData.viewproj = projection * view;
-	sceneData.ambientColor = glm::vec4(.25f);
-	sceneData.sunlightColor = glm::vec4(1.f);
-	sceneData.sunlightDirection = glm::vec4(cvarSunDir.Get(), cvarSunPower.Get());
-    sceneData.camPos = glm::vec4(mainCamera.position, 1.0f);
-    sceneData.lightViewProj = get_sun_matrix(); 
+    perFrameDataGPU.view = view;
+    perFrameDataGPU.proj = projection;
+    perFrameDataGPU.viewproj = projection * view;
+	perFrameDataGPU.ambientColor = glm::vec4(.25f);
+	perFrameDataGPU.sunlightColor = glm::vec4(1.f);
+	perFrameDataGPU.sunlightDirection = glm::vec4(cvarSunDir.Get(), cvarSunPower.Get());
+    perFrameDataGPU.camPos = glm::vec4(mainCamera.position, 1.0f);
+    perFrameDataGPU.lightViewProj = get_sun_matrix(); 
 
     auto end = std::chrono::system_clock::now();
 

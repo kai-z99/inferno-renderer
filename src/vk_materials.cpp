@@ -20,7 +20,7 @@ void GLTFMetallic_Roughness::build_pipelines(VulkanEngine* engine)
 
 	VkPushConstantRange matrixRange{};
 	matrixRange.offset = 0;
-	matrixRange.size = sizeof(GPUDrawPushConstants);
+	matrixRange.size = sizeof(PerObjectData_GPU);
 	matrixRange.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
 
 	//layout that contains material info

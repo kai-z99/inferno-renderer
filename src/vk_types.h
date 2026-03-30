@@ -60,14 +60,14 @@ struct GPUMeshBuffers
 
 // push constants for our mesh object draws
 //per-object!
-struct GPUDrawPushConstants 
+struct PerObjectData_GPU 
 {
     glm::mat4 worldMatrix;
     VkDeviceAddress vertexBuffer;
 };
 
 //per frame!
-struct GPUSceneData
+struct PerFrameData_GPU
 {
     glm::mat4 view;
     glm::mat4 proj;
