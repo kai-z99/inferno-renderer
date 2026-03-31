@@ -264,7 +264,7 @@ VkDescriptorBufferInfo vkinit::buffer_info(VkBuffer buffer, VkDeviceSize offset,
 }
 
 //> image_set
-VkImageCreateInfo vkinit::image_create_info(VkFormat format, VkImageUsageFlags usageFlags, VkExtent3D extent)
+VkImageCreateInfo vkinit::image_create_info(VkFormat format, VkImageUsageFlags usageFlags, VkExtent3D extent, VkSampleCountFlagBits samples)
 {
     VkImageCreateInfo info = {};
     info.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
@@ -279,7 +279,7 @@ VkImageCreateInfo vkinit::image_create_info(VkFormat format, VkImageUsageFlags u
     info.arrayLayers = 1;
 
     //for MSAA. we will not be using it by default, so default it to 1 sample per pixel.
-    info.samples = VK_SAMPLE_COUNT_1_BIT;
+    info.samples = samples;
 
     //optimal tiling, which means the image is stored on the best gpu format
     info.tiling = VK_IMAGE_TILING_OPTIMAL;

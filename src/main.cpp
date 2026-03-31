@@ -15,5 +15,5 @@ int main(int argc, char* argv[])
 
 
 // IBL
-// tonemapping/hdr
+// MSAA
 // optimze shadowpass culling

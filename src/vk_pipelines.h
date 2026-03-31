@@ -30,6 +30,7 @@ public:
 	void set_polygon_mode(VkPolygonMode mode); //_rasterizer
 	void set_cull_mode(VkCullModeFlags cullMode, VkFrontFace frontFace); //_rasterizer
 	void set_multisampling_none(); //_multisampling
+	void set_multisampling(VkSampleCountFlagBits samples);
 	void disable_blending(); //_colorBlendAttachment
 	void enable_blending_additive();
 	void enable_blending_alphablend();

@@ -52,7 +52,7 @@ static AutoCVar_Float cvarSunPower(
 static AutoCVar_Float cvarAmbient(
     "r.ambientLight",
     "Internal render scale",
-    0.05,
+    0.1,
     FloatCVarOptions{
         .minValue = 0.0,
         .maxValue = 0.5,
@@ -114,6 +114,8 @@ void VulkanEngine::init()
     init_vulkan();
 
     init_swapchain();
+
+    init_render_targets();
 
     init_commands();
 
@@ -231,6 +233,8 @@ void VulkanEngine::create_render_targets()
     allocInfo.usage = VMA_MEMORY_USAGE_GPU_ONLY;
     allocInfo.requiredFlags = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
 
+    // draw image ---
+
     _drawImage.imageFormat = VK_FORMAT_R16G16B16A16_SFLOAT;
     _drawImage.imageExtent = drawImageExtent;
 
@@ -249,17 +253,36 @@ void VulkanEngine::create_render_targets()
 
     VK_CHECK(vkCreateImageView(_device, &drawViewInfo, nullptr, &_drawImage.imageView));
 
+    // msaa image ---
+
+    _msaaImage.imageFormat = _drawImage.imageFormat;
+    _msaaImage.imageExtent = drawImageExtent;
+    VkImageUsageFlags msaaUsages = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+
+    VkImageCreateInfo msaaInfo = vkinit::image_create_info(_msaaImage.imageFormat, msaaUsages, drawImageExtent, VK_SAMPLE_COUNT_4_BIT);
+
+    vmaCreateImage(_allocator, &msaaInfo, &allocInfo, &_msaaImage.image, &_msaaImage.allocation, nullptr);
+
+    VkImageViewCreateInfo msaaViewInfo = vkinit::imageview_create_info(_msaaImage.imageFormat, _msaaImage.image, VK_IMAGE_ASPECT_COLOR_BIT);
+
+    VK_CHECK(vkCreateImageView(_device, &msaaViewInfo, nullptr, &_msaaImage.imageView));
+
+
+    //depth image ----
+
     _depthImage.imageFormat = VK_FORMAT_D32_SFLOAT;
     _depthImage.imageExtent = drawImageExtent;
 
     VkImageUsageFlags depthUsages = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
-    VkImageCreateInfo depthInfo = vkinit::image_create_info(_depthImage.imageFormat, depthUsages, drawImageExtent);
+    VkImageCreateInfo depthInfo = vkinit::image_create_info(_depthImage.imageFormat, depthUsages, drawImageExtent, VK_SAMPLE_COUNT_4_BIT);
 
     vmaCreateImage(_allocator, &depthInfo, &allocInfo, &_depthImage.image, &_depthImage.allocation, nullptr);
 
     VkImageViewCreateInfo depthViewInfo = vkinit::imageview_create_info(_depthImage.imageFormat, _depthImage.image, VK_IMAGE_ASPECT_DEPTH_BIT);
 
     VK_CHECK(vkCreateImageView(_device, &depthViewInfo, nullptr, &_depthImage.imageView));
+
+    //tone mapping image ----
 
     _tonemapImage.imageFormat = _swapchainImageFormat;
     _tonemapImage.imageExtent = drawImageExtent;
@@ -281,6 +304,11 @@ void VulkanEngine::init_swapchain()
 {
     fmt::print("Initializing swapchain...\n");
     create_swapchain(_windowExtent.width, _windowExtent.height);
+}
+
+void VulkanEngine::init_render_targets()
+{
+    fmt::print("Initializing render targets...\n");
     create_render_targets();
 
     // shadow depth image still lives here for now
@@ -328,8 +356,11 @@ void VulkanEngine::destroy_swapchain()
 void VulkanEngine::destroy_render_targets()
 {
     vkDestroyImageView(_device, _drawImage.imageView, nullptr);
-    vmaDestroyImage(_allocator, _drawImage.image, _drawImage.allocation)
-    ;
+    vmaDestroyImage(_allocator, _drawImage.image, _drawImage.allocation);
+
+    vkDestroyImageView(_device, _msaaImage.imageView, nullptr);
+    vmaDestroyImage(_allocator, _msaaImage.image, _msaaImage.allocation);
+
     vkDestroyImageView(_device, _depthImage.imageView, nullptr);
     vmaDestroyImage(_allocator, _depthImage.image, _depthImage.allocation);
 
@@ -365,23 +396,13 @@ void VulkanEngine::update_draw_descriptors()
         writer.write_image(
             0,
             _drawImage.imageView,
-            VK_NULL_HANDLE,
-            VK_IMAGE_LAYOUT_GENERAL,
-            VK_DESCRIPTOR_TYPE_STORAGE_IMAGE);
-        writer.update_set(_device, _drawImageDescriptorSet);
-    }
-
-    {
-        DescriptorWriter writer;
-        writer.write_image(
-            0,
-            _drawImage.imageView,
             _defaultSamplerLinear,
             VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
             VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
         writer.update_set(_device, _tonemapDescriptorSet);
     }
 }
+
 void VulkanEngine::init_commands()
 {
     fmt::print("Initializing command pools/buffers...\n");
@@ -508,13 +529,6 @@ void VulkanEngine::init_descriptors()
     };
     globalDescriptorAllocator.init(_device, 10, sizes); //10 sets can be allocated  from this one
 
-    // COMPUTE PIPELINE: make the descriptor set layout for our compute draw
-    {
-        DescriptorLayoutBuilder builder;
-        builder.add_binding(0, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE); // binding index 0 of the desciptor set being described holds an image
-        _drawImageDescriptorLayout = builder.build(_device, VK_SHADER_STAGE_COMPUTE_BIT);
-    }
-
     // GLTF PIPELINE: descriptor for per frame resources
     {
         DescriptorLayoutBuilder builder;
@@ -530,21 +544,6 @@ void VulkanEngine::init_descriptors()
         builder.add_binding(0, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER); // color image before tonemapping
 
         _tonemapDescriptorLayout = builder.build(_device, VK_SHADER_STAGE_FRAGMENT_BIT);
-    }
-
-    // allocate and write the image for the compute draw descriptor now because we wont need to update it.
-    // for other ones, we do it in the draw loop.
-    _drawImageDescriptorSet = globalDescriptorAllocator.allocate(_device, _drawImageDescriptorLayout);
-    {
-        DescriptorWriter writer;
-
-        writer.write_image(0, 
-            _drawImage.imageView, 
-            VK_NULL_HANDLE, 
-            VK_IMAGE_LAYOUT_GENERAL,            //usage state: compute shader
-            VK_DESCRIPTOR_TYPE_STORAGE_IMAGE); //descriptor type is an image resource
-        
-        writer.update_set(_device, _drawImageDescriptorSet);
     }
 
     _tonemapDescriptorSet = globalDescriptorAllocator.allocate(_device, _tonemapDescriptorLayout);
@@ -564,7 +563,6 @@ void VulkanEngine::init_descriptors()
     _mainDeletionQueue.push_function([&]()
     {
         globalDescriptorAllocator.destroy_pools(_device);
-		vkDestroyDescriptorSetLayout(_device, _drawImageDescriptorLayout, nullptr);
 		vkDestroyDescriptorSetLayout(_device, _perFrameDescriptorLayout, nullptr);
         vkDestroyDescriptorSetLayout(_device, _tonemapDescriptorLayout, nullptr);
     });
@@ -594,55 +592,10 @@ void VulkanEngine::init_descriptors()
 void VulkanEngine::init_pipelines()
 {
     fmt::print("Initializing pipelines...\n");
-    init_background_pipelines();
+    //init_background_pipelines();
     _metalRoughMaterial.build_pipelines(this);
     init_shadow_pipeline();
     init_tonemap_pipeline();
-}
-
-void VulkanEngine::init_background_pipelines()
-{
-    fmt::print("Initializing BG pipelines...\n"); // “Shaders in this pipeline will look for resources in set N, binding M with these types.”
-
-    //--------1. describe the data layout with out descriptor table to our pipeline -------------
-    VkPipelineLayoutCreateInfo computeLayout{};
-    computeLayout.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-    computeLayout.pNext = nullptr;
-    computeLayout.pSetLayouts = &_drawImageDescriptorLayout; // array of descriptor set layouts to use for this pipeline
-    computeLayout.setLayoutCount = 1;
-
-    VK_CHECK(vkCreatePipelineLayout(_device, &computeLayout, nullptr, &_backgroundPipelineLayout));
-
-    //--------2. describe info to connect the shader to the pipeline --------------------------
-    VkShaderModule skyShader;
-    if (!vkutil::load_shader_module("shaders/sky.comp.spv", _device, &skyShader))
-    {
-        fmt::print("Error when building the compute shader \n");
-    }
-
-    VkPipelineShaderStageCreateInfo stageinfo{};
-    stageinfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
-    stageinfo.pNext = nullptr;
-    stageinfo.stage = VK_SHADER_STAGE_COMPUTE_BIT;
-    stageinfo.module = skyShader;
-    stageinfo.pName = "main";
-
-    //--------3. create the compute pipeline with info from 1 and 2.------------------------
-    VkComputePipelineCreateInfo computePipelineCreateInfo{};
-    computePipelineCreateInfo.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
-    computePipelineCreateInfo.pNext = nullptr;
-    computePipelineCreateInfo.layout = _backgroundPipelineLayout; // 1
-    computePipelineCreateInfo.stage = stageinfo;                // 2
-
-    VK_CHECK(vkCreateComputePipelines(_device, VK_NULL_HANDLE, 1, &computePipelineCreateInfo, nullptr, &_backgroundPipeline));
-
-    //--------4. cleanup----------------------------------------
-    vkDestroyShaderModule(_device, skyShader, nullptr);
-    _mainDeletionQueue.push_function([=, this]()
-    {
-        vkDestroyPipelineLayout(_device, _backgroundPipelineLayout, nullptr);
-        vkDestroyPipeline(_device, _backgroundPipeline, nullptr); 
-    });
 }
 
 void VulkanEngine::init_shadow_pipeline()
@@ -821,6 +774,7 @@ void VulkanEngine::init_scene()
 
     // init default scene
     std::string structurePath = { "assets/sponza/Sponza.gltf" };
+    //std::string structurePath = { "assets/main_sponza/NewSponza_Main_glTF_003.gltf" };
     //std::string structurePath = { "assets/donutWithPBR.glb" };
     //std::string structurePath = { "assets/ABeautifulGame.glb" };
     auto structureFile = loadGltf(this, structurePath);
@@ -950,31 +904,6 @@ static void set_viewport_scissor(VkCommandBuffer cmd, VkExtent2D extent)
     vkCmdSetScissor(cmd, 0, 1, &scissor);
 }
 
-void VulkanEngine::draw_background(VkCommandBuffer cmd)
-{
-    if (_backgroundPipeline == VK_NULL_HANDLE)
-    {
-        return;
-    }
-
-    VkClearColorValue clearValue;
-    float flash = std::abs(std::sin(_frameNumber / 120.f));
-    clearValue = {{0.0f, 0.0f, flash, 1.0f}};
-
-    // clear image
-    VkImageSubresourceRange clearRange = vkinit::image_subresource_range(VK_IMAGE_ASPECT_COLOR_BIT); // clear color buffer
-    vkCmdClearColorImage(cmd, _drawImage.image, VK_IMAGE_LAYOUT_GENERAL, &clearValue, 1, &clearRange);
-
-    // bind the  compute pipeline
-    vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, _backgroundPipeline);
-
-    // bind the descriptor set containing the draw image for the compute pipeline. Also has push constant layout.
-    vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, _backgroundPipelineLayout, 0, 1, &_drawImageDescriptorSet, 0, nullptr);
-
-    // execute the compute pipeline dispatch. We are using 16x16 workgroup size so we need to divide by it
-    vkCmdDispatch(cmd, std::ceil(_drawExtent.width / 16.0), std::ceil(_drawExtent.height / 16.0), 1);
-}
-
 void VulkanEngine::draw_geometry(VkCommandBuffer cmd)
 {
     //reset stat counters
@@ -1009,8 +938,15 @@ void VulkanEngine::draw_geometry(VkCommandBuffer cmd)
     // begin a render pass connected to our draw image-----
 
     // VkRenderingAttachmentInfo describes the attachment we are rendering into for dynamic rendering
-    VkRenderingAttachmentInfo colorAttachment = vkinit::attachment_info(_drawImage.imageView, nullptr, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+    VkClearValue clearValue{};
+    clearValue.color = {{0.1f, 0.2f, 0.4f, 1.0f}};
+    VkRenderingAttachmentInfo colorAttachment = vkinit::attachment_info(_msaaImage.imageView, &clearValue, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+    //msaa image resolves to draw image
+    colorAttachment.resolveMode = VK_RESOLVE_MODE_AVERAGE_BIT;
+    colorAttachment.resolveImageView = _drawImage.imageView;
+    colorAttachment.resolveImageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
     VkRenderingAttachmentInfo depthAttachment = vkinit::depth_attachment_info(_depthImage.imageView, VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL);
+    
 
     // VkRenderingInfo is the info for vkCmdBeginRendering. It needs to know the region we are drawing and the attachments we are drawing into.
     VkRenderingInfo renderInfo = vkinit::rendering_info(_drawExtent, &colorAttachment, &depthAttachment);
@@ -1245,9 +1181,9 @@ void VulkanEngine::draw()
 
     // transition our main draw image into general layout so we can write into it
     // we will overwrite it all so we dont care about what was the older layout
-    vkutil::transition_image(cmd, _drawImage.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_ASPECT_COLOR_BIT); // add barrier to cmd
+    //vkutil::transition_image(cmd, _msaaImage.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_ASPECT_COLOR_BIT); // add barrier to cmd
 
-    draw_background(cmd); // bg
+    //draw_background(cmd); // bg
 
     //draw shadow map ---------------
     vkutil::transition_image(cmd, _shadowDepthImage.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL, VK_IMAGE_ASPECT_DEPTH_BIT);
@@ -1259,7 +1195,8 @@ void VulkanEngine::draw()
 
     // transution from general -> VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL.
     // Note that this is the VkRenderingAttachmentInfo we defined we would be writing into in our VkRenderingInfo (dynamic rendering info)
-    vkutil::transition_image(cmd, _drawImage.image, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_ASPECT_COLOR_BIT);
+    vkutil::transition_image(cmd, _msaaImage.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_ASPECT_COLOR_BIT);
+    vkutil::transition_image(cmd, _drawImage.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_ASPECT_COLOR_BIT);
     vkutil::transition_image(cmd, _depthImage.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL, VK_IMAGE_ASPECT_DEPTH_BIT);
 
     draw_geometry(cmd); // trinagle
@@ -1270,7 +1207,7 @@ void VulkanEngine::draw()
 
     draw_tonemap(cmd);
 
-    // transition the draw image and the swapchain image states so we can blit the image into the swapchain.
+    // transition the draw image and the swapchain imagex states so we can blit the image into the swapchain.
     vkutil::transition_image(cmd, _tonemapImage.image, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,VK_IMAGE_ASPECT_COLOR_BIT );
     vkutil::transition_image(cmd, _swapchainImages[swapchainImageIndex], VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_ASPECT_COLOR_BIT);
 
@@ -1501,3 +1438,74 @@ void VulkanEngine::immediate_submit(std::function<void(VkCommandBuffer cmd)> &&f
     VK_CHECK(vkWaitForFences(_device, 1, &_immFence, true, 9999999999));
 }
 
+
+//legacy
+// void VulkanEngine::init_background_pipelines()
+// {
+//     fmt::print("Initializing BG pipelines...\n"); // “Shaders in this pipeline will look for resources in set N, binding M with these types.”
+
+//     //--------1. describe the data layout with out descriptor table to our pipeline -------------
+//     VkPipelineLayoutCreateInfo computeLayout{};
+//     computeLayout.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+//     computeLayout.pNext = nullptr;
+//     computeLayout.pSetLayouts = &_drawImageDescriptorLayout; // array of descriptor set layouts to use for this pipeline
+//     computeLayout.setLayoutCount = 1;
+
+//     VK_CHECK(vkCreatePipelineLayout(_device, &computeLayout, nullptr, &_backgroundPipelineLayout));
+
+//     //--------2. describe info to connect the shader to the pipeline --------------------------
+//     VkShaderModule skyShader;
+//     if (!vkutil::load_shader_module("shaders/sky.comp.spv", _device, &skyShader))
+//     {
+//         fmt::print("Error when building the compute shader \n");
+//     }
+
+//     VkPipelineShaderStageCreateInfo stageinfo{};
+//     stageinfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+//     stageinfo.pNext = nullptr;
+//     stageinfo.stage = VK_SHADER_STAGE_COMPUTE_BIT;
+//     stageinfo.module = skyShader;
+//     stageinfo.pName = "main";
+
+//     //--------3. create the compute pipeline with info from 1 and 2.------------------------
+//     VkComputePipelineCreateInfo computePipelineCreateInfo{};
+//     computePipelineCreateInfo.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
+//     computePipelineCreateInfo.pNext = nullptr;
+//     computePipelineCreateInfo.layout = _backgroundPipelineLayout; // 1
+//     computePipelineCreateInfo.stage = stageinfo;                // 2
+
+//     VK_CHECK(vkCreateComputePipelines(_device, VK_NULL_HANDLE, 1, &computePipelineCreateInfo, nullptr, &_backgroundPipeline));
+
+//     //--------4. cleanup----------------------------------------
+//     vkDestroyShaderModule(_device, skyShader, nullptr);
+//     _mainDeletionQueue.push_function([=, this]()
+//     {
+//         vkDestroyPipelineLayout(_device, _backgroundPipelineLayout, nullptr);
+//         vkDestroyPipeline(_device, _backgroundPipeline, nullptr); 
+//     });
+// }
+
+// void VulkanEngine::draw_background(VkCommandBuffer cmd)
+// {
+//     if (_backgroundPipeline == VK_NULL_HANDLE)
+//     {
+//         return;
+//     }
+
+//     VkClearColorValue clearValue;
+//     float flash = std::abs(std::sin(_frameNumber / 120.f));
+//     clearValue = {{0.0f, 0.0f, flash, 1.0f}};
+
+//     // clear image
+//     VkImageSubresourceRange clearRange = vkinit::image_subresource_range(VK_IMAGE_ASPECT_COLOR_BIT); // clear color buffer
+//     vkCmdClearColorImage(cmd, _msaaImage.image, VK_IMAGE_LAYOUT_GENERAL, &clearValue, 1, &clearRange);
+
+//     // bind the  compute pipeline
+//     vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, _backgroundPipeline);
+
+//     // bind the descriptor set containing the draw image for the compute pipeline. Also has push constant layout.
+//     vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, _backgroundPipelineLayout, 0, 1, &_drawImageDescriptorSet, 0, nullptr);
+
+//     // execute the compute pipeline dispatch. We are using 16x16 workgroup size so we need to divide by it
+//     vkCmdDispatch(cmd, std::ceil(_drawExtent.width / 16.0), std::ceil(_drawExtent.height / 16.0), 1);
+// }

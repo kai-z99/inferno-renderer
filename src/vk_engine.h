@@ -75,6 +75,7 @@ private:
 	// initialization
 	void init_vulkan();
 	void init_swapchain();
+	void init_render_targets();
 	void init_commands();
 	void init_sync_structures();
 	void init_descriptors();
@@ -139,6 +140,7 @@ private:
 	std::vector<VkImage> _swapchainImages;
 	std::vector<VkImageView> _swapchainImageViews;
 	VkExtent2D _swapchainExtent;
+	AllocatedImage _msaaImage;
 	AllocatedImage _drawImage;
 	AllocatedImage _depthImage;
 	AllocatedImage _shadowDepthImage;
@@ -150,15 +152,15 @@ private:
 
 	// descriptors
 	DescriptorAllocatorGrowable globalDescriptorAllocator;
-	VkDescriptorSet _drawImageDescriptorSet;
+	//VkDescriptorSet _drawImageDescriptorSet;
 	VkDescriptorSet _tonemapDescriptorSet;
-	VkDescriptorSetLayout _drawImageDescriptorLayout;
+	//VkDescriptorSetLayout _drawImageDescriptorLayout;
 	VkDescriptorSetLayout _perFrameDescriptorLayout;
 	VkDescriptorSetLayout _tonemapDescriptorLayout;
 
 	// pipelines and materials
-	VkPipelineLayout _backgroundPipelineLayout;
-	VkPipeline _backgroundPipeline{ VK_NULL_HANDLE };
+	//kPipelineLayout _backgroundPipelineLayout;
+	//VkPipeline _backgroundPipeline{ VK_NULL_HANDLE };
 	VkPipeline _shadowPipeline;
 	VkPipeline _tonemapPipeline;
 	VkPipelineLayout _shadowPipelineLayout;
