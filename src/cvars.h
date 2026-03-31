@@ -19,6 +19,7 @@ enum class CVarEditHint : uint8_t
 	TextBox,
 	Slider,
 	Drag,
+	Step,
 	Checkbox,
 };
 

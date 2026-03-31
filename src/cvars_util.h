@@ -53,9 +53,9 @@ inline bool IsEditHintCompatible(CVarType type, CVarEditHint hint)
 	switch (type)
 	{
 	case CVarType::FLOAT:
-		return hint == CVarEditHint::TextBox || hint == CVarEditHint::Slider || hint == CVarEditHint::Drag;
+		return hint == CVarEditHint::TextBox || hint == CVarEditHint::Slider || hint == CVarEditHint::Drag || hint == CVarEditHint::Step;
 	case CVarType::INT:
-		return hint == CVarEditHint::TextBox || hint == CVarEditHint::Checkbox || hint == CVarEditHint::Slider || hint == CVarEditHint::Drag;
+		return hint == CVarEditHint::TextBox || hint == CVarEditHint::Checkbox || hint == CVarEditHint::Slider || hint == CVarEditHint::Drag || hint == CVarEditHint::Step;
 	case CVarType::BOOL:
 		return hint == CVarEditHint::Checkbox;
 	case CVarType::VEC3:

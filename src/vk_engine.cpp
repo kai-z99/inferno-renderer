@@ -37,13 +37,25 @@ static AutoCVar_Float cvarRenderScale(
     },
     CVarEditHint::TextBox);
 
-    static AutoCVar_Float cvarSunPower(
+static AutoCVar_Float cvarSunPower(
     "r.sunPower",
     "Internal render scale",
-    5.0,
+    2.1,
     FloatCVarOptions{
         .minValue = 0.3,
         .maxValue = 50.0,
+        .step = 0.01f,
+        .format = "%.2f",
+    },
+    CVarEditHint::Slider);
+
+static AutoCVar_Float cvarAmbient(
+    "r.ambientLight",
+    "Internal render scale",
+    0.05,
+    FloatCVarOptions{
+        .minValue = 0.0,
+        .maxValue = 0.5,
         .step = 0.01f,
         .format = "%.2f",
     },
@@ -61,6 +73,17 @@ static AutoCVar_Vec3 cvarSunDir(
     },
     CVarEditHint::Drag
 );
+
+static AutoCVar_Int cvarTonemapIndex(
+    "r.tonemapindex",
+    "Internal render scale",
+    0,
+    IntCVarOptions{
+        .minValue = 0,
+        .maxValue = 2,
+        .step = 1
+    },
+    CVarEditHint::Step);
 
 
 VulkanEngine *loadedEngine = nullptr;
@@ -179,7 +202,7 @@ void VulkanEngine::init_vulkan()
 void VulkanEngine::create_swapchain(uint32_t width, uint32_t height)
 {
     vkb::SwapchainBuilder swapchainBuilder{_chosenGPU, _device, _surface};
-    _swapchainImageFormat = VK_FORMAT_B8G8R8A8_UNORM;
+    _swapchainImageFormat = VK_FORMAT_B8G8R8A8_SRGB;
 
     vkb::Swapchain vkbSwapchain = swapchainBuilder
                                       .set_desired_format(VkSurfaceFormatKHR{.format = _swapchainImageFormat, .colorSpace = VK_COLOR_SPACE_SRGB_NONLINEAR_KHR})
@@ -686,11 +709,16 @@ void VulkanEngine::init_tonemap_pipeline()
 
     VkDescriptorSetLayout setLayouts[] = { _tonemapDescriptorLayout };
 
+    VkPushConstantRange pushRange{};
+    pushRange.offset = 0;
+    pushRange.size = sizeof(int32_t);
+    pushRange.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+
     VkPipelineLayoutCreateInfo layoutInfo = vkinit::pipeline_layout_create_info();
     layoutInfo.setLayoutCount = 1;
     layoutInfo.pSetLayouts = setLayouts;
-    layoutInfo.pushConstantRangeCount = 0;
-    layoutInfo.pPushConstantRanges = nullptr;
+    layoutInfo.pushConstantRangeCount = 1;
+    layoutInfo.pPushConstantRanges = &pushRange;
 
     VK_CHECK(vkCreatePipelineLayout(_device, &layoutInfo, nullptr, &_tonemapPipelineLayout));
 
@@ -792,8 +820,8 @@ void VulkanEngine::init_scene()
     mainCamera.yaw = 0;
 
     // init default scene
-   // std::string structurePath = { "assets/sponza/Sponza.gltf" };
-    std::string structurePath = { "assets/donutWithPBR.glb" };
+    std::string structurePath = { "assets/sponza/Sponza.gltf" };
+    //std::string structurePath = { "assets/donutWithPBR.glb" };
     //std::string structurePath = { "assets/ABeautifulGame.glb" };
     auto structureFile = loadGltf(this, structurePath);
 
@@ -1159,6 +1187,8 @@ void VulkanEngine::draw_tonemap(VkCommandBuffer cmd)
 
     // bind pipeline/descriptor set
     vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, _tonemapPipeline);
+    int32_t index = cvarTonemapIndex.Get();
+    vkCmdPushConstants(cmd, _tonemapPipelineLayout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(int32_t), &index);
     vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, _tonemapPipelineLayout, 0, 1, &_tonemapDescriptorSet, 0, nullptr);
     vkCmdDraw(cmd, 3, 1, 0, 0);
     vkCmdEndRendering(cmd);
@@ -1329,7 +1359,7 @@ void VulkanEngine::update_scene()
     perFrameDataGPU.view = view;
     perFrameDataGPU.proj = projection;
     perFrameDataGPU.viewproj = projection * view;
-	perFrameDataGPU.ambientColor = glm::vec4(.25f);
+	perFrameDataGPU.ambientColor = glm::vec4(cvarAmbient.Get());
 	perFrameDataGPU.sunlightColor = glm::vec4(1.f);
 	perFrameDataGPU.sunlightDirection = glm::vec4(cvarSunDir.Get(), cvarSunPower.Get());
     perFrameDataGPU.camPos = glm::vec4(mainCamera.position, 1.0f);

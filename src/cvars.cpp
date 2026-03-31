@@ -856,6 +856,19 @@ void CVarSystemImpl::EditParameter(CVarParameter* p, float textWidth)
 					}
 					ImGui::PopID();
 				}
+				else if (p->editHint == CVarEditHint::Step)
+				{
+					Label(p->name.c_str(), textWidth);
+					ImGui::PushID(p->name.c_str());
+					int32_t value = GetCVarArray<int32_t>()->GetCurrent(p->arrayIndex);
+					const int32_t step = std::max(1, p->intStep);
+					const int32_t stepFast = std::max(step, step * 10);
+					if (ImGui::InputScalar("", ImGuiDataType_S32, &value, &step, &stepFast, GetIntFormat(p)))
+					{
+						GetCVarArray<int32_t>()->SetCurrent(ClampIntValue(p, value), p->arrayIndex);
+					}
+					ImGui::PopID();
+				}
 			}
 		}
 		break;
@@ -939,6 +952,12 @@ void CVarSystemImpl::EditParameter(CVarParameter* p, float textWidth)
 			else if (p->editHint == CVarEditHint::Drag)
 			{
 				edited = ImGui::DragScalar("", ImGuiDataType_Double, currentValue, p->step, minPtr, maxPtr, format);
+			}
+			else if (p->editHint == CVarEditHint::Step)
+			{
+				const double step = std::max(0.0, static_cast<double>(p->step));
+				const double stepFast = std::max(step, step * 10.0);
+				edited = ImGui::InputScalar("", ImGuiDataType_Double, currentValue, &step, &stepFast, format);
 			}
 			else if (p->editHint == CVarEditHint::TextBox)
 			{
