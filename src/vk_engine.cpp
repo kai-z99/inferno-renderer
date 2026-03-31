@@ -203,6 +203,7 @@ void VulkanEngine::init_vulkan()
 
 void VulkanEngine::create_swapchain(uint32_t width, uint32_t height)
 {
+    fmt::print("Creating swapchain...\n");
     vkb::SwapchainBuilder swapchainBuilder{_chosenGPU, _device, _surface};
     _swapchainImageFormat = VK_FORMAT_B8G8R8A8_SRGB;
 
@@ -222,6 +223,7 @@ void VulkanEngine::create_swapchain(uint32_t width, uint32_t height)
 
 void VulkanEngine::create_render_targets()
 {
+    fmt::print("Creating render targets...\n");
     VkExtent3D drawImageExtent = 
     {
         _windowExtent.width,
@@ -355,6 +357,7 @@ void VulkanEngine::destroy_swapchain()
 
 void VulkanEngine::destroy_render_targets()
 {
+    fmt::print("Destroying render targets...\n");
     vkDestroyImageView(_device, _drawImage.imageView, nullptr);
     vmaDestroyImage(_allocator, _drawImage.image, _drawImage.allocation);
 
@@ -389,8 +392,10 @@ void VulkanEngine::resize_swapchain()
     resize_requested = false;
 }
 
+// some descriptor sets point at images that get recreated when render targets change
 void VulkanEngine::update_draw_descriptors()
 {
+    fmt::print("Updating descriptors...\n");
     {
         DescriptorWriter writer;
         writer.write_image(
@@ -456,6 +461,7 @@ void VulkanEngine::init_sync_structures()
 
 void VulkanEngine::init_default_data()
 {
+    fmt::print("Initializing default data ...\n");
     // meshes
     //testMeshes = loadGltfMeshes(this, "assets/basicmesh.glb").value();
 
@@ -773,9 +779,9 @@ void VulkanEngine::init_scene()
     mainCamera.yaw = 0;
 
     // init default scene
-    std::string structurePath = { "assets/sponza/Sponza.gltf" };
+    //std::string structurePath = { "assets/sponza/Sponza.gltf" };
     //std::string structurePath = { "assets/main_sponza/NewSponza_Main_glTF_003.gltf" };
-    //std::string structurePath = { "assets/donutWithPBR.glb" };
+    std::string structurePath = { "assets/donutWithPBR.glb" };
     //std::string structurePath = { "assets/ABeautifulGame.glb" };
     auto structureFile = loadGltf(this, structurePath);
 
@@ -1149,11 +1155,9 @@ void VulkanEngine::draw()
     //
     //Note that vkAcquireNextImageKHR expects swapchain size to be compatible with window size. If not it will return e.
     VkResult e = vkAcquireNextImageKHR(_device, _swapchain, 1000000000, get_current_frame()._swapchainSemaphore, nullptr, &swapchainImageIndex);
-    if (e == VK_ERROR_OUT_OF_DATE_KHR)
-    {
-        resize_requested = true;
-        return;
-    }
+    
+    if (e == VK_ERROR_OUT_OF_DATE_KHR) {resize_requested = true; return; } //swapchainn no longer usable
+    if (e == VK_SUBOPTIMAL_KHR) resize_requested = true; //swapchain can still be used
 
     //_drawImage.imageExtent = maximum canvas you actually own
     //_swapchainExtent = window size you want to present to
@@ -1254,10 +1258,7 @@ void VulkanEngine::draw()
 
     //Note that vkQueuePresentKHR expects swapchain size to be compatible with window size. If not it will return error/suboptimal.
     VkResult presentResult = vkQueuePresentKHR(_graphicsQueue, &presentInfo);
-    if (presentResult == VK_ERROR_OUT_OF_DATE_KHR)
-    {
-        resize_requested = true;
-    }
+    if (presentResult == VK_ERROR_OUT_OF_DATE_KHR || presentResult == VK_SUBOPTIMAL_KHR ) resize_requested = true;
 
     _frameNumber++;
 }
