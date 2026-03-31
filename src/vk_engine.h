@@ -78,21 +78,28 @@ private:
 	void init_commands();
 	void init_sync_structures();
 	void init_descriptors();
-	void init_pipelines();
+	
 	void init_imgui();
 	void init_default_data();
 	void init_scene();
+
 	//pipelines
 	void init_background_pipelines();
 	void init_shadow_pipeline();
+	void init_tonemap_pipeline();
+	void init_pipelines();
 
 	void create_swapchain(uint32_t width, uint32_t height);
+	void create_render_targets();
 	void destroy_swapchain();
+	void destroy_render_targets();
 	void resize_swapchain();
+	void update_draw_descriptors();
 
 	void draw_background(VkCommandBuffer cmd);
 	void draw_geometry(VkCommandBuffer cmd);
 	void draw_shadow_map(VkCommandBuffer cmd);
+	void draw_tonemap(VkCommandBuffer cmd);
 	void draw_imgui(VkCommandBuffer cmd, VkImageView targetImageView);
 
 	// scene
@@ -135,21 +142,27 @@ private:
 	AllocatedImage _drawImage;
 	AllocatedImage _depthImage;
 	AllocatedImage _shadowDepthImage;
+	AllocatedImage _tonemapImage;
 	VkExtent2D _drawExtent;
 	float renderScale = 1.f;
 	uint32_t _shadowMapResolution = 1024;
 
+
 	// descriptors
 	DescriptorAllocatorGrowable globalDescriptorAllocator;
-	VkDescriptorSet _drawImageDescriptors;
+	VkDescriptorSet _drawImageDescriptorSet;
+	VkDescriptorSet _tonemapDescriptorSet;
 	VkDescriptorSetLayout _drawImageDescriptorLayout;
 	VkDescriptorSetLayout _perFrameDescriptorLayout;
+	VkDescriptorSetLayout _tonemapDescriptorLayout;
 
 	// pipelines and materials
 	VkPipelineLayout _backgroundPipelineLayout;
 	VkPipeline _backgroundPipeline{ VK_NULL_HANDLE };
 	VkPipeline _shadowPipeline;
+	VkPipeline _tonemapPipeline;
 	VkPipelineLayout _shadowPipelineLayout;
+	VkPipelineLayout _tonemapPipelineLayout;
 	GLTFMetallic_Roughness _metalRoughMaterial;
 
 	// scene state

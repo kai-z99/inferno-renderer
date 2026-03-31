@@ -96,13 +96,13 @@ void VulkanEngine::init()
 
     init_sync_structures();
 
+    init_default_data();
+
     init_descriptors();
 
     init_pipelines();
 
     init_imgui();
-
-    init_default_data();
 
     init_scene();
 
@@ -195,77 +195,98 @@ void VulkanEngine::create_swapchain(uint32_t width, uint32_t height)
     _swapchainImageViews = vkbSwapchain.get_image_views().value();
 }
 
+void VulkanEngine::create_render_targets()
+{
+    VkExtent3D drawImageExtent = 
+    {
+        _windowExtent.width,
+        _windowExtent.height,
+        1
+    };
+
+    VmaAllocationCreateInfo allocInfo = {};
+    allocInfo.usage = VMA_MEMORY_USAGE_GPU_ONLY;
+    allocInfo.requiredFlags = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
+
+    _drawImage.imageFormat = VK_FORMAT_R16G16B16A16_SFLOAT;
+    _drawImage.imageExtent = drawImageExtent;
+
+    VkImageUsageFlags drawUsages{};
+    drawUsages |= VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
+    drawUsages |= VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+    drawUsages |= VK_IMAGE_USAGE_STORAGE_BIT;
+    drawUsages |= VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+    drawUsages |= VK_IMAGE_USAGE_SAMPLED_BIT;
+
+    VkImageCreateInfo drawInfo = vkinit::image_create_info(_drawImage.imageFormat, drawUsages, drawImageExtent);
+
+    vmaCreateImage(_allocator, &drawInfo, &allocInfo, &_drawImage.image, &_drawImage.allocation, nullptr);
+
+    VkImageViewCreateInfo drawViewInfo = vkinit::imageview_create_info(_drawImage.imageFormat, _drawImage.image, VK_IMAGE_ASPECT_COLOR_BIT);
+
+    VK_CHECK(vkCreateImageView(_device, &drawViewInfo, nullptr, &_drawImage.imageView));
+
+    _depthImage.imageFormat = VK_FORMAT_D32_SFLOAT;
+    _depthImage.imageExtent = drawImageExtent;
+
+    VkImageUsageFlags depthUsages = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
+    VkImageCreateInfo depthInfo = vkinit::image_create_info(_depthImage.imageFormat, depthUsages, drawImageExtent);
+
+    vmaCreateImage(_allocator, &depthInfo, &allocInfo, &_depthImage.image, &_depthImage.allocation, nullptr);
+
+    VkImageViewCreateInfo depthViewInfo = vkinit::imageview_create_info(_depthImage.imageFormat, _depthImage.image, VK_IMAGE_ASPECT_DEPTH_BIT);
+
+    VK_CHECK(vkCreateImageView(_device, &depthViewInfo, nullptr, &_depthImage.imageView));
+
+    _tonemapImage.imageFormat = _swapchainImageFormat;
+    _tonemapImage.imageExtent = drawImageExtent;
+
+    VkImageUsageFlags tonemapUsages{};
+    tonemapUsages |= VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+    tonemapUsages |= VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
+
+    VkImageCreateInfo tonemapInfo = vkinit::image_create_info(_tonemapImage.imageFormat, tonemapUsages, drawImageExtent);
+
+    vmaCreateImage(_allocator, &tonemapInfo, &allocInfo, &_tonemapImage.image, &_tonemapImage.allocation, nullptr);
+
+    VkImageViewCreateInfo tonemapViewInfo = vkinit::imageview_create_info(_tonemapImage.imageFormat, _tonemapImage.image, VK_IMAGE_ASPECT_COLOR_BIT);
+
+    VK_CHECK(vkCreateImageView(_device, &tonemapViewInfo, nullptr, &_tonemapImage.imageView));
+}
+
 void VulkanEngine::init_swapchain()
 {
     fmt::print("Initializing swapchain...\n");
     create_swapchain(_windowExtent.width, _windowExtent.height);
+    create_render_targets();
 
-    // draw image size will match the window
-    VkExtent3D drawImageExtent = {
-        _windowExtent.width,
-        _windowExtent.height,
-        1};
-
-    // hardcoding the draw format to 32 bit float
-    _drawImage.imageFormat = VK_FORMAT_R16G16B16A16_SFLOAT;
-    _drawImage.imageExtent = drawImageExtent;
-
-    // what will this image be used for?
-    VkImageUsageFlags drawImageUsages{};
-    drawImageUsages |= VK_IMAGE_USAGE_TRANSFER_SRC_BIT;     // copy from
-    drawImageUsages |= VK_IMAGE_USAGE_TRANSFER_DST_BIT;     // copy into
-    drawImageUsages |= VK_IMAGE_USAGE_STORAGE_BIT;          // compute shader can write into it
-    drawImageUsages |= VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT; // so we can draw into it with grpahics pipeline
-
-    // 1x msaa, optimal tiling
-    VkImageCreateInfo rimg_info = vkinit::image_create_info(_drawImage.imageFormat, drawImageUsages, drawImageExtent);
-
-    // for the draw image, we want to allocate it from gpu local memory
-    VmaAllocationCreateInfo rimg_allocinfo = {};
-    rimg_allocinfo.usage = VMA_MEMORY_USAGE_GPU_ONLY;                                          // we will not access this image from the CPU, so we put into GPU vram.
-    rimg_allocinfo.requiredFlags = VkMemoryPropertyFlags(VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT); // VRAM specfic flag. guranteed fastest access.
-
-    // allocate and create the image
-    vmaCreateImage(_allocator, &rimg_info, &rimg_allocinfo, &_drawImage.image, &_drawImage.allocation, nullptr);
-
-    // build a image-view for the draw image to use for rendering
-    //  2d image, base layer and mip, color.
-    VkImageViewCreateInfo rview_info = vkinit::imageview_create_info(_drawImage.imageFormat, _drawImage.image, VK_IMAGE_ASPECT_COLOR_BIT);
-    VK_CHECK(vkCreateImageView(_device, &rview_info, nullptr, &_drawImage.imageView));
-
-    // depth image------------------------
-    _depthImage.imageFormat = VK_FORMAT_D32_SFLOAT;
-    _depthImage.imageExtent = drawImageExtent;
-    VkImageUsageFlags depthImageUsages{};
-    depthImageUsages |= VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
-    VkImageCreateInfo dimg_info = vkinit::image_create_info(_depthImage.imageFormat, depthImageUsages, drawImageExtent);
-    vmaCreateImage(_allocator, &dimg_info, &rimg_allocinfo, &_depthImage.image, &_depthImage.allocation, nullptr);
-    VkImageViewCreateInfo dview_info = vkinit::imageview_create_info(_depthImage.imageFormat, _depthImage.image, VK_IMAGE_ASPECT_DEPTH_BIT);
-    VK_CHECK(vkCreateImageView(_device, &dview_info, nullptr, &_depthImage.imageView));
-
-    //shadow depth image
+    // shadow depth image still lives here for now
     VkExtent3D shadowExtent = { _shadowMapResolution, _shadowMapResolution, 1 };
+
+    VmaAllocationCreateInfo allocInfo = {};
+    allocInfo.usage = VMA_MEMORY_USAGE_GPU_ONLY;
+    allocInfo.requiredFlags = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
+
     _shadowDepthImage.imageFormat = VK_FORMAT_D32_SFLOAT;
     _shadowDepthImage.imageExtent = shadowExtent;
-    VkImageUsageFlags shadowImageUsages{};
-    shadowImageUsages |= VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT; 
-    VkImageCreateInfo simg_info = vkinit::image_create_info(_shadowDepthImage.imageFormat, shadowImageUsages,shadowExtent );
-    vmaCreateImage(_allocator, &simg_info, &rimg_allocinfo, &_shadowDepthImage.image, &_shadowDepthImage.allocation, nullptr);
-    VkImageViewCreateInfo sview_info = vkinit::imageview_create_info(_shadowDepthImage.imageFormat, _shadowDepthImage.image, VK_IMAGE_ASPECT_DEPTH_BIT);
-    VK_CHECK(vkCreateImageView(_device, &sview_info, nullptr, &_shadowDepthImage.imageView));
-    
 
-    // add to deletion queues
+    VkImageUsageFlags shadowImageUsages{};
+    shadowImageUsages |= VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
+
+    VkImageCreateInfo simg_info =
+        vkinit::image_create_info(_shadowDepthImage.imageFormat, shadowImageUsages, shadowExtent);
+
+    vmaCreateImage(_allocator, &simg_info, &allocInfo, &_shadowDepthImage.image, &_shadowDepthImage.allocation, nullptr);
+
+    VkImageViewCreateInfo sview_info =
+        vkinit::imageview_create_info(_shadowDepthImage.imageFormat, _shadowDepthImage.image, VK_IMAGE_ASPECT_DEPTH_BIT);
+
+    VK_CHECK(vkCreateImageView(_device, &sview_info, nullptr, &_shadowDepthImage.imageView));
+
     _mainDeletionQueue.push_function([=, this]()
     {
-        vkDestroyImageView(_device, _drawImage.imageView, nullptr);
-        vmaDestroyImage(_allocator, _drawImage.image, _drawImage.allocation);
-
-        vkDestroyImageView(_device, _depthImage.imageView, nullptr);
-        vmaDestroyImage(_allocator, _depthImage.image, _depthImage.allocation); 
-
         vkDestroyImageView(_device, _shadowDepthImage.imageView, nullptr);
-        vmaDestroyImage(_allocator, _shadowDepthImage.image, _shadowDepthImage.allocation); 
+        vmaDestroyImage(_allocator, _shadowDepthImage.image, _shadowDepthImage.allocation);
     });
 }
 
@@ -281,6 +302,18 @@ void VulkanEngine::destroy_swapchain()
     }
 }
 
+void VulkanEngine::destroy_render_targets()
+{
+    vkDestroyImageView(_device, _drawImage.imageView, nullptr);
+    vmaDestroyImage(_allocator, _drawImage.image, _drawImage.allocation)
+    ;
+    vkDestroyImageView(_device, _depthImage.imageView, nullptr);
+    vmaDestroyImage(_allocator, _depthImage.image, _depthImage.allocation);
+
+    vkDestroyImageView(_device, _tonemapImage.imageView, nullptr);
+    vmaDestroyImage(_allocator, _tonemapImage.image, _tonemapImage.allocation);
+}
+
 void VulkanEngine::resize_swapchain()
 {
     fmt::print("Resizing swapchain...\n");
@@ -288,6 +321,7 @@ void VulkanEngine::resize_swapchain()
     vkDeviceWaitIdle(_device);
 
     destroy_swapchain();
+    destroy_render_targets();
 
     int w, h;
     SDL_GetWindowSize(_window, &w, &h);
@@ -295,10 +329,36 @@ void VulkanEngine::resize_swapchain()
     _windowExtent.height = h;
 
     create_swapchain(_windowExtent.width, _windowExtent.height);
+    create_render_targets();
+    update_draw_descriptors();
 
     resize_requested = false;
 }
 
+void VulkanEngine::update_draw_descriptors()
+{
+    {
+        DescriptorWriter writer;
+        writer.write_image(
+            0,
+            _drawImage.imageView,
+            VK_NULL_HANDLE,
+            VK_IMAGE_LAYOUT_GENERAL,
+            VK_DESCRIPTOR_TYPE_STORAGE_IMAGE);
+        writer.update_set(_device, _drawImageDescriptorSet);
+    }
+
+    {
+        DescriptorWriter writer;
+        writer.write_image(
+            0,
+            _drawImage.imageView,
+            _defaultSamplerLinear,
+            VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+            VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
+        writer.update_set(_device, _tonemapDescriptorSet);
+    }
+}
 void VulkanEngine::init_commands()
 {
     fmt::print("Initializing command pools/buffers...\n");
@@ -350,6 +410,68 @@ void VulkanEngine::init_sync_structures()
         { vkDestroyFence(_device, _immFence, nullptr); });
 }
 
+void VulkanEngine::init_default_data()
+{
+    // meshes
+    //testMeshes = loadGltfMeshes(this, "assets/basicmesh.glb").value();
+
+    //textures
+	//3 default textures, white, grey, black. 1 pixel each
+	uint32_t white = glm::packUnorm4x8(glm::vec4(1, 1, 1, 1));
+	_whiteImage = vkutil::upload_image(*this, (void*)&white, VkExtent3D{ 1, 1, 1 }, VK_FORMAT_R8G8B8A8_UNORM,
+		VK_IMAGE_USAGE_SAMPLED_BIT);
+
+	uint32_t grey = glm::packUnorm4x8(glm::vec4(0.66f, 0.66f, 0.66f, 1));
+	_greyImage = vkutil::upload_image(*this, (void*)&grey, VkExtent3D{ 1, 1, 1 }, VK_FORMAT_R8G8B8A8_UNORM,
+		VK_IMAGE_USAGE_SAMPLED_BIT);
+
+	uint32_t black = glm::packUnorm4x8(glm::vec4(0, 0, 0, 0.5));
+	_blackImage = vkutil::upload_image(*this, (void*)&black, VkExtent3D{ 1, 1, 1 }, VK_FORMAT_R8G8B8A8_UNORM,
+		VK_IMAGE_USAGE_SAMPLED_BIT);
+
+	//checkerboard image
+	uint32_t magenta = glm::packUnorm4x8(glm::vec4(1, 0, 1, 0.5));
+	std::array<uint32_t, 16 *16 > pixels; //for 16x16 checkerboard texture
+	for (int x = 0; x < 16; x++) 
+    {
+		for (int y = 0; y < 16; y++) 
+        {
+			pixels[y*16 + x] = ((x % 2) ^ (y % 2)) ? magenta : black;
+		}
+	}
+	_errorCheckerboardImage = vkutil::upload_image(*this, pixels.data(), VkExtent3D{16, 16, 1}, VK_FORMAT_R8G8B8A8_UNORM,
+		VK_IMAGE_USAGE_SAMPLED_BIT);
+
+	VkSamplerCreateInfo sampl = {.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO};
+
+	sampl.magFilter = VK_FILTER_NEAREST;
+	sampl.minFilter = VK_FILTER_NEAREST;
+
+	vkCreateSampler(_device, &sampl, nullptr, &_defaultSamplerNearest);
+
+	sampl.magFilter = VK_FILTER_LINEAR;
+	sampl.minFilter = VK_FILTER_LINEAR;
+	vkCreateSampler(_device, &sampl, nullptr, &_defaultSamplerLinear);
+
+    sampl.addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER;
+    sampl.addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER;
+    sampl.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER;
+    sampl.borderColor = VK_BORDER_COLOR_FLOAT_OPAQUE_WHITE;
+    vkCreateSampler(_device, &sampl, nullptr, &_shadowSampler);
+
+	_mainDeletionQueue.push_function([&]()
+    {
+		vkDestroySampler(_device,_defaultSamplerNearest,nullptr);
+		vkDestroySampler(_device,_defaultSamplerLinear,nullptr);
+		vkDestroySampler(_device,_shadowSampler,nullptr);
+
+		vkutil::destroy_image(_allocator, _device, _whiteImage);
+		vkutil::destroy_image(_allocator, _device, _greyImage);
+		vkutil::destroy_image(_allocator, _device, _blackImage);
+		vkutil::destroy_image(_allocator, _device, _errorCheckerboardImage);
+	});
+}
+
 void VulkanEngine::init_descriptors()
 {
     fmt::print("Initializing descriptor sets...\n");
@@ -379,9 +501,17 @@ void VulkanEngine::init_descriptors()
         _perFrameDescriptorLayout = builder.build(_device, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT);
     }
 
+    //TONE MAPPING 
+    {
+        DescriptorLayoutBuilder builder;
+        builder.add_binding(0, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER); // color image before tonemapping
+
+        _tonemapDescriptorLayout = builder.build(_device, VK_SHADER_STAGE_FRAGMENT_BIT);
+    }
+
     // allocate and write the image for the compute draw descriptor now because we wont need to update it.
     // for other ones, we do it in the draw loop.
-    _drawImageDescriptors = globalDescriptorAllocator.allocate(_device, _drawImageDescriptorLayout);
+    _drawImageDescriptorSet = globalDescriptorAllocator.allocate(_device, _drawImageDescriptorLayout);
     {
         DescriptorWriter writer;
 
@@ -391,7 +521,20 @@ void VulkanEngine::init_descriptors()
             VK_IMAGE_LAYOUT_GENERAL,            //usage state: compute shader
             VK_DESCRIPTOR_TYPE_STORAGE_IMAGE); //descriptor type is an image resource
         
-        writer.update_set(_device, _drawImageDescriptors);
+        writer.update_set(_device, _drawImageDescriptorSet);
+    }
+
+    _tonemapDescriptorSet = globalDescriptorAllocator.allocate(_device, _tonemapDescriptorLayout);
+    {
+        DescriptorWriter writer;
+
+        writer.write_image(0, 
+            _drawImage.imageView, 
+            _defaultSamplerLinear, 
+            VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, //read only
+            VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER); 
+        
+        writer.update_set(_device, _tonemapDescriptorSet);
     }
 
     //cleanup
@@ -400,6 +543,7 @@ void VulkanEngine::init_descriptors()
         globalDescriptorAllocator.destroy_pools(_device);
 		vkDestroyDescriptorSetLayout(_device, _drawImageDescriptorLayout, nullptr);
 		vkDestroyDescriptorSetLayout(_device, _perFrameDescriptorLayout, nullptr);
+        vkDestroyDescriptorSetLayout(_device, _tonemapDescriptorLayout, nullptr);
     });
 
     //make our per frame descriptor allocators. We use these each frame to allocate descriptor sets for the per frame resources.
@@ -430,6 +574,7 @@ void VulkanEngine::init_pipelines()
     init_background_pipelines();
     _metalRoughMaterial.build_pipelines(this);
     init_shadow_pipeline();
+    init_tonemap_pipeline();
 }
 
 void VulkanEngine::init_background_pipelines()
@@ -525,6 +670,57 @@ void VulkanEngine::init_shadow_pipeline()
     });
 }
 
+void VulkanEngine::init_tonemap_pipeline()
+{
+    VkShaderModule fullscreenVert, tonemapFrag;
+    if (!vkutil::load_shader_module("shaders/fullscreen.vert.spv", _device, &fullscreenVert)) 
+    {
+        fmt::println("Error loading vertex shader");
+        return;
+    }
+    if (!vkutil::load_shader_module("shaders/tonemapping.frag.spv", _device, &tonemapFrag)) 
+    {
+        fmt::println("Error loading shadow vertex shader");
+        return;
+    }
+
+    VkDescriptorSetLayout setLayouts[] = { _tonemapDescriptorLayout };
+
+    VkPipelineLayoutCreateInfo layoutInfo = vkinit::pipeline_layout_create_info();
+    layoutInfo.setLayoutCount = 1;
+    layoutInfo.pSetLayouts = setLayouts;
+    layoutInfo.pushConstantRangeCount = 0;
+    layoutInfo.pPushConstantRanges = nullptr;
+
+    VK_CHECK(vkCreatePipelineLayout(_device, &layoutInfo, nullptr, &_tonemapPipelineLayout));
+
+    PipelineBuilder pipelineBuilder;
+    pipelineBuilder.set_shaders(fullscreenVert, tonemapFrag);
+    pipelineBuilder.set_input_topology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
+    pipelineBuilder.set_polygon_mode(VK_POLYGON_MODE_FILL);
+    pipelineBuilder.set_cull_mode(VK_CULL_MODE_NONE, VK_FRONT_FACE_CLOCKWISE);
+    pipelineBuilder.set_multisampling_none();
+    pipelineBuilder.disable_depthtest();
+    pipelineBuilder.disable_blending();
+    pipelineBuilder.set_color_attachment_format(_tonemapImage.imageFormat);
+
+    // depth-only pass, no call set_color_attachment_format()
+
+    pipelineBuilder._pipelineLayout = _tonemapPipelineLayout;
+
+    _tonemapPipeline= pipelineBuilder.build_pipeline(_device);
+
+    vkDestroyShaderModule(_device, fullscreenVert, nullptr);
+    vkDestroyShaderModule(_device, tonemapFrag, nullptr);
+
+    _mainDeletionQueue.push_function([=, this]()
+    {
+        vkDestroyPipeline(_device, _tonemapPipeline, nullptr);
+        vkDestroyPipelineLayout(_device, _tonemapPipelineLayout, nullptr);
+    });
+
+}
+
 void VulkanEngine::init_imgui()
 {
     fmt::print("Initializing imgui...\n");
@@ -587,68 +783,6 @@ void VulkanEngine::init_imgui()
         vkDestroyDescriptorPool(_device, imguiPool, nullptr); });
 }
 
-void VulkanEngine::init_default_data()
-{
-    // meshes
-    //testMeshes = loadGltfMeshes(this, "assets/basicmesh.glb").value();
-
-    //textures
-	//3 default textures, white, grey, black. 1 pixel each
-	uint32_t white = glm::packUnorm4x8(glm::vec4(1, 1, 1, 1));
-	_whiteImage = vkutil::upload_image(*this, (void*)&white, VkExtent3D{ 1, 1, 1 }, VK_FORMAT_R8G8B8A8_UNORM,
-		VK_IMAGE_USAGE_SAMPLED_BIT);
-
-	uint32_t grey = glm::packUnorm4x8(glm::vec4(0.66f, 0.66f, 0.66f, 1));
-	_greyImage = vkutil::upload_image(*this, (void*)&grey, VkExtent3D{ 1, 1, 1 }, VK_FORMAT_R8G8B8A8_UNORM,
-		VK_IMAGE_USAGE_SAMPLED_BIT);
-
-	uint32_t black = glm::packUnorm4x8(glm::vec4(0, 0, 0, 0.5));
-	_blackImage = vkutil::upload_image(*this, (void*)&black, VkExtent3D{ 1, 1, 1 }, VK_FORMAT_R8G8B8A8_UNORM,
-		VK_IMAGE_USAGE_SAMPLED_BIT);
-
-	//checkerboard image
-	uint32_t magenta = glm::packUnorm4x8(glm::vec4(1, 0, 1, 0.5));
-	std::array<uint32_t, 16 *16 > pixels; //for 16x16 checkerboard texture
-	for (int x = 0; x < 16; x++) 
-    {
-		for (int y = 0; y < 16; y++) 
-        {
-			pixels[y*16 + x] = ((x % 2) ^ (y % 2)) ? magenta : black;
-		}
-	}
-	_errorCheckerboardImage = vkutil::upload_image(*this, pixels.data(), VkExtent3D{16, 16, 1}, VK_FORMAT_R8G8B8A8_UNORM,
-		VK_IMAGE_USAGE_SAMPLED_BIT);
-
-	VkSamplerCreateInfo sampl = {.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO};
-
-	sampl.magFilter = VK_FILTER_NEAREST;
-	sampl.minFilter = VK_FILTER_NEAREST;
-
-	vkCreateSampler(_device, &sampl, nullptr, &_defaultSamplerNearest);
-
-	sampl.magFilter = VK_FILTER_LINEAR;
-	sampl.minFilter = VK_FILTER_LINEAR;
-	vkCreateSampler(_device, &sampl, nullptr, &_defaultSamplerLinear);
-
-    sampl.addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER;
-    sampl.addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER;
-    sampl.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER;
-    sampl.borderColor = VK_BORDER_COLOR_FLOAT_OPAQUE_WHITE;
-    vkCreateSampler(_device, &sampl, nullptr, &_shadowSampler);
-
-	_mainDeletionQueue.push_function([&]()
-    {
-		vkDestroySampler(_device,_defaultSamplerNearest,nullptr);
-		vkDestroySampler(_device,_defaultSamplerLinear,nullptr);
-		vkDestroySampler(_device,_shadowSampler,nullptr);
-
-		vkutil::destroy_image(_allocator, _device, _whiteImage);
-		vkutil::destroy_image(_allocator, _device, _greyImage);
-		vkutil::destroy_image(_allocator, _device, _blackImage);
-		vkutil::destroy_image(_allocator, _device, _errorCheckerboardImage);
-	});
-}
-
 void VulkanEngine::init_scene()
 {
     // init camera
@@ -660,7 +794,7 @@ void VulkanEngine::init_scene()
     // init default scene
    // std::string structurePath = { "assets/sponza/Sponza.gltf" };
     std::string structurePath = { "assets/donutWithPBR.glb" };
-    //std::string structurePath = { "assets/BoomBox.glb" };
+    //std::string structurePath = { "assets/ABeautifulGame.glb" };
     auto structureFile = loadGltf(this, structurePath);
 
     assert(structureFile.has_value());
@@ -699,9 +833,11 @@ void VulkanEngine::cleanup()
         //     destroy_buffer(mesh->meshBuffers.vertexBuffer);
         // }
 
+        destroy_render_targets();
         _mainDeletionQueue.flush();
 
         destroy_swapchain();
+        
 
         vkDestroySurfaceKHR(_instance, _surface, nullptr);
 
@@ -805,7 +941,7 @@ void VulkanEngine::draw_background(VkCommandBuffer cmd)
     vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, _backgroundPipeline);
 
     // bind the descriptor set containing the draw image for the compute pipeline. Also has push constant layout.
-    vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, _backgroundPipelineLayout, 0, 1, &_drawImageDescriptors, 0, nullptr);
+    vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, _backgroundPipelineLayout, 0, 1, &_drawImageDescriptorSet, 0, nullptr);
 
     // execute the compute pipeline dispatch. We are using 16x16 workgroup size so we need to divide by it
     vkCmdDispatch(cmd, std::ceil(_drawExtent.width / 16.0), std::ceil(_drawExtent.height / 16.0), 1);
@@ -1008,6 +1144,26 @@ void VulkanEngine::draw_shadow_map(VkCommandBuffer cmd)
 
 }
 
+void VulkanEngine::draw_tonemap(VkCommandBuffer cmd)
+{
+    VkRenderingAttachmentInfo colorAttachment = vkinit::attachment_info(_tonemapImage.imageView, nullptr, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+
+    // VkRenderingInfo is the info for vkCmdBeginRendering. It needs to know the region we are drawing and the attachments we are drawing into.
+    VkRenderingInfo renderInfo = vkinit::rendering_info(_drawExtent, &colorAttachment, nullptr);
+
+    // start dynamic rendering
+    vkCmdBeginRendering(cmd, &renderInfo);
+
+    //set vp/scissor
+    set_viewport_scissor(cmd, _drawExtent);
+
+    // bind pipeline/descriptor set
+    vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, _tonemapPipeline);
+    vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, _tonemapPipelineLayout, 0, 1, &_tonemapDescriptorSet, 0, nullptr);
+    vkCmdDraw(cmd, 3, 1, 0, 0);
+    vkCmdEndRendering(cmd);
+}
+
 void VulkanEngine::draw()
 {
     update_scene();
@@ -1027,7 +1183,7 @@ void VulkanEngine::draw()
     //
     //Note that vkAcquireNextImageKHR expects swapchain size to be compatible with window size. If not it will return e.
     VkResult e = vkAcquireNextImageKHR(_device, _swapchain, 1000000000, get_current_frame()._swapchainSemaphore, nullptr, &swapchainImageIndex);
-    if (e == VK_ERROR_OUT_OF_DATE_KHR || e == VK_SUBOPTIMAL_KHR)
+    if (e == VK_ERROR_OUT_OF_DATE_KHR)
     {
         resize_requested = true;
         return;
@@ -1078,12 +1234,18 @@ void VulkanEngine::draw()
 
     draw_geometry(cmd); // trinagle
 
+    //run tonemapping pass
+    vkutil::transition_image(cmd, _drawImage.image, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_ASPECT_COLOR_BIT);
+    vkutil::transition_image(cmd, _tonemapImage.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_ASPECT_COLOR_BIT);
+
+    draw_tonemap(cmd);
+
     // transition the draw image and the swapchain image states so we can blit the image into the swapchain.
-    vkutil::transition_image(cmd, _drawImage.image, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,VK_IMAGE_ASPECT_COLOR_BIT );
+    vkutil::transition_image(cmd, _tonemapImage.image, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,VK_IMAGE_ASPECT_COLOR_BIT );
     vkutil::transition_image(cmd, _swapchainImages[swapchainImageIndex], VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_ASPECT_COLOR_BIT);
 
     // blit our draw image onto swapchain
-    vkutil::copy_image_to_image(cmd, _drawImage.image, _swapchainImages[swapchainImageIndex], _drawExtent, _swapchainExtent);
+    vkutil::copy_image_to_image(cmd, _tonemapImage.image, _swapchainImages[swapchainImageIndex], _drawExtent, _swapchainExtent);
 
     // set swapchain image layout to Attachment Optimal so we can draw GUI it
     vkutil::transition_image(cmd, _swapchainImages[swapchainImageIndex], VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_ASPECT_COLOR_BIT);
@@ -1125,7 +1287,7 @@ void VulkanEngine::draw()
 
     //Note that vkQueuePresentKHR expects swapchain size to be compatible with window size. If not it will return error/suboptimal.
     VkResult presentResult = vkQueuePresentKHR(_graphicsQueue, &presentInfo);
-    if (presentResult == VK_ERROR_OUT_OF_DATE_KHR || presentResult == VK_SUBOPTIMAL_KHR)
+    if (presentResult == VK_ERROR_OUT_OF_DATE_KHR)
     {
         resize_requested = true;
     }
