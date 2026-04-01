@@ -879,7 +879,7 @@ void VulkanEngine::init_scene()
     // init default scene
     //std::string structurePath = { "assets/sponza/Sponza.gltf" };
     //std::string structurePath = { "assets/main_sponza/NewSponza_Main_glTF_003.gltf" };
-    std::string structurePath = { "assets/donutWithPBR.glb" };
+    std::string structurePath = { "assets/WaterBottle.glb" };
     //std::string structurePath = { "assets/ABeautifulGame.glb" };
     auto structureFile = loadGltf(this, structurePath);
 
