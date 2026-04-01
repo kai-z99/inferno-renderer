@@ -7,13 +7,13 @@
 void GLTFMetallic_Roughness::build_pipelines(VulkanEngine* engine)
 {
 	VkShaderModule meshFragShader;
-	if (!vkutil::load_shader_module("shaders/mesh.frag.spv", engine->_device, &meshFragShader))
+	if (!vkutil::load_shader_module("shaders/spirv/mesh.frag.spv", engine->_device, &meshFragShader))
 	{
 		fmt::println("Error when building the triangle fragment shader module\n");
 	}
 
 	VkShaderModule meshVertexShader;
-	if (!vkutil::load_shader_module("shaders/mesh.vert.spv", engine->_device, &meshVertexShader))
+	if (!vkutil::load_shader_module("shaders/spirv/mesh.vert.spv", engine->_device, &meshVertexShader))
 	{
 		fmt::println("Error when building the triangle vertex shader module\n");
 	}

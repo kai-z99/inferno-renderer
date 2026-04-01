@@ -32,10 +32,13 @@ file(GLOB_RECURSE GLSL_INCLUDE_FILES
     "${PROJECT_SOURCE_DIR}/shaders/*.glsl"
     )
 
+set(SPIRV_OUTPUT_DIR "${PROJECT_SOURCE_DIR}/shaders/spirv")
+file(MAKE_DIRECTORY ${SPIRV_OUTPUT_DIR})
+
 foreach(GLSL ${GLSL_SOURCE_FILES})
   message(STATUS "BUILDING SHADER")
   get_filename_component(FILE_NAME ${GLSL} NAME)
-  set(SPIRV "${PROJECT_SOURCE_DIR}/shaders/${FILE_NAME}.spv")
+  set(SPIRV "${SPIRV_OUTPUT_DIR}/${FILE_NAME}.spv")
   message(STATUS ${GLSL})
   add_custom_command(
     OUTPUT ${SPIRV}

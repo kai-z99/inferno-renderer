@@ -656,7 +656,7 @@ void VulkanEngine::init_pipelines()
 void VulkanEngine::init_shadow_pipeline()
 {
     VkShaderModule shadowVert;
-    if (!vkutil::load_shader_module("shaders/shadow_pass.vert.spv", _device, &shadowVert)) 
+    if (!vkutil::load_shader_module("shaders/spirv/shadow_pass.vert.spv", _device, &shadowVert)) 
     {
         fmt::println("Error loading shadow vertex shader");
         return;
@@ -704,12 +704,12 @@ void VulkanEngine::init_shadow_pipeline()
 void VulkanEngine::init_tonemap_pipeline()
 {
     VkShaderModule fullscreenVert, tonemapFrag;
-    if (!vkutil::load_shader_module("shaders/fullscreen.vert.spv", _device, &fullscreenVert)) 
+    if (!vkutil::load_shader_module("shaders/spirv/fullscreen.vert.spv", _device, &fullscreenVert)) 
     {
         fmt::println("Error loading vertex shader");
         return;
     }
-    if (!vkutil::load_shader_module("shaders/tonemapping.frag.spv", _device, &tonemapFrag)) 
+    if (!vkutil::load_shader_module("shaders/spirv/tonemapping.frag.spv", _device, &tonemapFrag)) 
     {
         fmt::println("Error loading shadow vertex shader");
         return;
@@ -760,12 +760,12 @@ void VulkanEngine::init_tonemap_pipeline()
 void VulkanEngine::init_skybox_pipeline()
 {
     VkShaderModule skyboxVert, skyboxFrag;
-    if (!vkutil::load_shader_module("shaders/fullscreen.vert.spv", _device, &skyboxVert)) 
+    if (!vkutil::load_shader_module("shaders/spirv/fullscreen.vert.spv", _device, &skyboxVert)) 
     {
         fmt::println("Error loading vertex shader");
         return;
     }
-    if (!vkutil::load_shader_module("shaders/skybox.frag.spv", _device, &skyboxFrag)) 
+    if (!vkutil::load_shader_module("shaders/spirv/skybox.frag.spv", _device, &skyboxFrag)) 
     {
         fmt::println("Error loading fragment shader");
         return;
@@ -1558,7 +1558,7 @@ void VulkanEngine::immediate_submit(std::function<void(VkCommandBuffer cmd)> &&f
 
 //     //--------2. describe info to connect the shader to the pipeline --------------------------
 //     VkShaderModule skyShader;
-//     if (!vkutil::load_shader_module("shaders/sky.comp.spv", _device, &skyShader))
+//     if (!vkutil::load_shader_module("shaders/spirv/sky.comp.spv", _device, &skyShader))
 //     {
 //         fmt::print("Error when building the compute shader \n");
 //     }

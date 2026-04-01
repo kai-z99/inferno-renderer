@@ -21,12 +21,13 @@ layout(set = 2, binding = 1) uniform sampler2D colorTex;
 layout(set = 2, binding = 2) uniform sampler2D metalRoughTex;
 layout(set = 2, binding = 3) uniform sampler2D normalTex;
 
+//in
 layout (location = 0) in vec3 inNormal;
 layout (location = 1) in vec3 inColor;
 layout (location = 2) in vec2 inUV;
 layout (location = 3) in vec4 inFragPosWorld;
 layout (location = 4) in vec4 inTangent;
-
+//out
 layout (location = 0) out vec4 outFragColor;
 
 void main() 
@@ -48,7 +49,8 @@ void main()
 	float roughness = texture(metalRoughTex, inUV).g * materialData.metal_rough_factors.y;
 
 	float shadow = ShadowEval_PCF(shadowMap, inFragPosWorld, sceneData.lightViewProj);
-	outFragColor = vec4(sceneData.ambientColor.xyz * albedo + shadow * DirLightEval_CookTorrance(lightCol, lightPower, lightDir, viewDir, normal, albedo, metallic, roughness), 1.0);
+	vec3 eval = DirLightEval_CookTorrance(lightCol, lightPower, lightDir, viewDir, normal, albedo, metallic, roughness);
+	outFragColor = vec4(sceneData.ambientColor.xyz * albedo + shadow * eval, 1.0);
 	
 	//outFragColor = vec4(texture(shadowMap, inUV));
 	//outFragColor = vec4(albedo, 1.0);

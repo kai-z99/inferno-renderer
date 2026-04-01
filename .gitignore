@@ -2,3 +2,4 @@
 /bin
 /assets/brickadia
 /assets/main_sponza
+/shaders/spirv/*.spv
