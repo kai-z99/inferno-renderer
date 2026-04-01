@@ -63,11 +63,19 @@ namespace vkutil
 		return newSurface;
 	}
 
-	AllocatedImage upload_image(VulkanEngine& engine, void* data, VkExtent3D size, VkFormat format, VkImageUsageFlags usage, bool mipmapped)
+	AllocatedImage upload_image(VulkanEngine& engine, void* data, VkExtent3D size, VkFormat format, VkImageUsageFlags usage, bool mipmapped, size_t byteSize)
 	{
-		size_t data_size = size.depth * size.width * size.height * 4;
-		AllocatedBuffer uploadbuffer = create_buffer(engine.allocator(), data_size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
-		memcpy(uploadbuffer.info.pMappedData, data, data_size);
+		if (byteSize == 0) //default to rgba8
+		{
+			byteSize =
+				static_cast<size_t>(size.width) *
+				static_cast<size_t>(size.height) *
+				static_cast<size_t>(size.depth) *
+				4;
+		}
+		
+		AllocatedBuffer uploadbuffer = create_buffer(engine.allocator(), byteSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
+		memcpy(uploadbuffer.info.pMappedData, data, byteSize);
 
 		AllocatedImage new_image = create_image(
 			engine.allocator(),
@@ -85,7 +93,6 @@ namespace vkutil
 			copyRegion.bufferOffset = 0;
 			copyRegion.bufferRowLength = 0;
 			copyRegion.bufferImageHeight = 0;
-
 			copyRegion.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
 			copyRegion.imageSubresource.mipLevel = 0;
 			copyRegion.imageSubresource.baseArrayLayer = 0;

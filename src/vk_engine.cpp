@@ -509,6 +509,10 @@ void VulkanEngine::init_default_data()
     sampl.borderColor = VK_BORDER_COLOR_FLOAT_OPAQUE_WHITE;
     vkCreateSampler(_device, &sampl, nullptr, &_shadowSampler);
 
+    std::optional<AllocatedImage> skybox = load_hdr_image(this, "assets/test_skybox.hdr").value();
+    assert(skybox.has_value());
+    _skyboxImage = skybox.value();
+
 	_mainDeletionQueue.push_function([&]()
     {
 		vkDestroySampler(_device,_defaultSamplerNearest,nullptr);
@@ -519,6 +523,7 @@ void VulkanEngine::init_default_data()
 		vkutil::destroy_image(_allocator, _device, _greyImage);
 		vkutil::destroy_image(_allocator, _device, _blackImage);
 		vkutil::destroy_image(_allocator, _device, _errorCheckerboardImage);
+        vkutil::destroy_image(_allocator, _device, _skyboxImage);
 	});
 }
 
@@ -531,7 +536,7 @@ void VulkanEngine::init_descriptors()
     {
         {VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1}, 
     	{VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1},
-        {VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 2}
+        {VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 3}
     };
     globalDescriptorAllocator.init(_device, 10, sizes); //10 sets can be allocated  from this one
 
@@ -539,9 +544,29 @@ void VulkanEngine::init_descriptors()
     {
         DescriptorLayoutBuilder builder;
         builder.add_binding(0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER); //ubo (PerFrameData_GPU)
-        builder.add_binding(1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER); //shadowmap
-
         _perFrameDescriptorLayout = builder.build(_device, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT);
+    }
+
+    // GLTF PIPELINE: descriptor for the shadow map sampler
+    {
+        DescriptorLayoutBuilder builder;
+        builder.add_binding(0, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
+
+        _shadowDescriptorLayout = builder.build(_device, VK_SHADER_STAGE_FRAGMENT_BIT);
+    }
+
+    _shadowDescriptorSet = globalDescriptorAllocator.allocate(_device, _shadowDescriptorLayout);
+    {
+        DescriptorWriter writer;
+
+        writer.write_image(
+            0,
+            _shadowDepthImage.imageView,
+            _shadowSampler,
+            VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_OPTIMAL,
+            VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
+
+        writer.update_set(_device, _shadowDescriptorSet);
     }
 
     //TONE MAPPING 
@@ -565,12 +590,35 @@ void VulkanEngine::init_descriptors()
         writer.update_set(_device, _tonemapDescriptorSet);
     }
 
+    // SKYBOX
+    {
+        DescriptorLayoutBuilder builder;
+        builder.add_binding(0, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER); //equirectanglar texture
+
+        _skyboxDescriptorLayout = builder.build(_device, VK_SHADER_STAGE_FRAGMENT_BIT);
+    }
+
+    _skyboxDescriptorSet = globalDescriptorAllocator.allocate(_device, _skyboxDescriptorLayout);
+    {
+        DescriptorWriter writer;
+
+        writer.write_image(0, 
+            _skyboxImage.imageView, 
+            _defaultSamplerLinear, 
+            VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, //read only
+            VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER); 
+        
+        writer.update_set(_device, _skyboxDescriptorSet);
+    }
+
     //cleanup
     _mainDeletionQueue.push_function([&]()
     {
         globalDescriptorAllocator.destroy_pools(_device);
 		vkDestroyDescriptorSetLayout(_device, _perFrameDescriptorLayout, nullptr);
+        vkDestroyDescriptorSetLayout(_device, _shadowDescriptorLayout, nullptr);
         vkDestroyDescriptorSetLayout(_device, _tonemapDescriptorLayout, nullptr);
+        vkDestroyDescriptorSetLayout(_device, _skyboxDescriptorLayout, nullptr);
     });
 
     //make our per frame descriptor allocators. We use these each frame to allocate descriptor sets for the per frame resources.
@@ -602,6 +650,7 @@ void VulkanEngine::init_pipelines()
     _metalRoughMaterial.build_pipelines(this);
     init_shadow_pipeline();
     init_tonemap_pipeline();
+    init_skybox_pipeline();
 }
 
 void VulkanEngine::init_shadow_pipeline()
@@ -707,6 +756,55 @@ void VulkanEngine::init_tonemap_pipeline()
     });
 
 }
+
+void VulkanEngine::init_skybox_pipeline()
+{
+    VkShaderModule skyboxVert, skyboxFrag;
+    if (!vkutil::load_shader_module("shaders/fullscreen.vert.spv", _device, &skyboxVert)) 
+    {
+        fmt::println("Error loading vertex shader");
+        return;
+    }
+    if (!vkutil::load_shader_module("shaders/skybox.frag.spv", _device, &skyboxFrag)) 
+    {
+        fmt::println("Error loading fragment shader");
+        return;
+    }
+
+    VkDescriptorSetLayout setLayouts[] = { _perFrameDescriptorLayout, _skyboxDescriptorLayout };
+
+    VkPipelineLayoutCreateInfo layoutInfo = vkinit::pipeline_layout_create_info();
+    layoutInfo.setLayoutCount = 2;
+    layoutInfo.pSetLayouts = setLayouts;
+    layoutInfo.pushConstantRangeCount = 0;
+    layoutInfo.pPushConstantRanges = nullptr;
+
+    VK_CHECK(vkCreatePipelineLayout(_device, &layoutInfo, nullptr, &_skyboxPipelineLayout));
+
+    PipelineBuilder pipelineBuilder;
+    pipelineBuilder.set_shaders(skyboxVert, skyboxFrag);
+    pipelineBuilder.set_input_topology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
+    pipelineBuilder.set_polygon_mode(VK_POLYGON_MODE_FILL);
+    pipelineBuilder.set_cull_mode(VK_CULL_MODE_NONE, VK_FRONT_FACE_CLOCKWISE);
+    pipelineBuilder.set_multisampling(VK_SAMPLE_COUNT_4_BIT); //because we are rendering in the same pass as draw_geometry
+    pipelineBuilder.set_depth_format(_depthImage.imageFormat); // we need this to not have a error because we use the same pass as draw geometry
+    pipelineBuilder.disable_blending();
+    pipelineBuilder.set_color_attachment_format(_msaaImage.imageFormat);
+
+    pipelineBuilder._pipelineLayout = _skyboxPipelineLayout;
+
+    _skyboxPipeline= pipelineBuilder.build_pipeline(_device);
+
+    vkDestroyShaderModule(_device, skyboxVert, nullptr);
+    vkDestroyShaderModule(_device, skyboxFrag, nullptr);
+
+    _mainDeletionQueue.push_function([=, this]()
+    {
+        vkDestroyPipeline(_device, _skyboxPipeline, nullptr);
+        vkDestroyPipelineLayout(_device, _skyboxPipelineLayout, nullptr);
+    });
+}
+
 
 void VulkanEngine::init_imgui()
 {
@@ -910,6 +1008,16 @@ static void set_viewport_scissor(VkCommandBuffer cmd, VkExtent2D extent)
     vkCmdSetScissor(cmd, 0, 1, &scissor);
 }
 
+void VulkanEngine::draw_skybox(VkCommandBuffer cmd, VkDescriptorSet& perFrameDescriptorSet)
+{
+    // bind pipeline/descriptor set
+    vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, _skyboxPipeline);
+    vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, _skyboxPipelineLayout, 0, 1, &perFrameDescriptorSet, 0, nullptr);
+    vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, _skyboxPipelineLayout, 1, 1, &_skyboxDescriptorSet, 0, nullptr);
+
+    vkCmdDraw(cmd, 3, 1, 0, 0);
+}
+
 void VulkanEngine::draw_geometry(VkCommandBuffer cmd)
 {
     //reset stat counters
@@ -944,9 +1052,7 @@ void VulkanEngine::draw_geometry(VkCommandBuffer cmd)
     // begin a render pass connected to our draw image-----
 
     // VkRenderingAttachmentInfo describes the attachment we are rendering into for dynamic rendering
-    VkClearValue clearValue{};
-    clearValue.color = {{0.1f, 0.2f, 0.4f, 1.0f}};
-    VkRenderingAttachmentInfo colorAttachment = vkinit::attachment_info(_msaaImage.imageView, &clearValue, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+    VkRenderingAttachmentInfo colorAttachment = vkinit::attachment_info(_msaaImage.imageView, nullptr, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
     //msaa image resolves to draw image
     colorAttachment.resolveMode = VK_RESOLVE_MODE_AVERAGE_BIT;
     colorAttachment.resolveImageView = _drawImage.imageView;
@@ -978,23 +1084,19 @@ void VulkanEngine::draw_geometry(VkCommandBuffer cmd)
 	});
 
 	//create a descriptor set (from layout for per frame data we described in setup)
-	VkDescriptorSet perFrameDescriptor = get_current_frame()._frameDescriptors.allocate(_device, _perFrameDescriptorLayout);
+	VkDescriptorSet perFrameDescriptorSet = get_current_frame()._frameDescriptors.allocate(_device, _perFrameDescriptorLayout);
 
 	DescriptorWriter writer;
     //bind our buffer data to binding 0 of that descriptor set.
     //             binding 0                                              set 0
 	writer.write_buffer(0, gpuSceneDataBuffer.buffer, sizeof(PerFrameData_GPU), 0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER); 
-    //shadow map in binding 1
-    writer.write_image(1,
-        _shadowDepthImage.imageView,
-        _shadowSampler,
-        VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_OPTIMAL,
-        VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
-	writer.update_set(_device, perFrameDescriptor); 
+	writer.update_set(_device, perFrameDescriptorSet); 
     //-------------------------------------------------------------------------------------------------------
 
     //no need for material descriptor, as its been written duing loadgltfs.
     
+    draw_skybox(cmd, perFrameDescriptorSet);
+
     // draw all meshes (RenderObjects)
     // note calling MeshNode::Draw in update() fills mainDrawContext with RenderObjects 
     MaterialPipeline* lastPipeline = nullptr;
@@ -1012,12 +1114,14 @@ void VulkanEngine::draw_geometry(VkCommandBuffer cmd)
                 lastPipeline = r.material->pipeline;
                 vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, r.material->pipeline->pipeline);
                 vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,r.material->pipeline->layout, 0, 1,
-                    &perFrameDescriptor, 0, nullptr);
+                    &perFrameDescriptorSet, 0, nullptr);
+                vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, r.material->pipeline->layout, 1, 1,
+                    &_shadowDescriptorSet, 0, nullptr);
                 
                 set_viewport_scissor(cmd, _drawExtent);
             }
 
-            vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, r.material->pipeline->layout, 1, 1,
+            vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, r.material->pipeline->layout, 2, 1,
                 &r.material->materialSet, 0, nullptr);
         }
 
@@ -1183,11 +1287,9 @@ void VulkanEngine::draw()
     VkCommandBufferBeginInfo cmdBeginInfo = vkinit::command_buffer_begin_info(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
     VK_CHECK(vkBeginCommandBuffer(cmd, &cmdBeginInfo));
 
-    // transition our main draw image into general layout so we can write into it
-    // we will overwrite it all so we dont care about what was the older layout
-    //vkutil::transition_image(cmd, _msaaImage.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_ASPECT_COLOR_BIT); // add barrier to cmd
-
-    //draw_background(cmd); // bg
+    // skybox
+    vkutil::transition_image(cmd, _msaaImage.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_ASPECT_COLOR_BIT);
+    //vkutil::transition_image(cmd, _skyboxImage.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_ASPECT_COLOR_BIT); //done when image is created
 
     //draw shadow map ---------------
     vkutil::transition_image(cmd, _shadowDepthImage.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL, VK_IMAGE_ASPECT_DEPTH_BIT);
@@ -1199,7 +1301,7 @@ void VulkanEngine::draw()
 
     // transution from general -> VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL.
     // Note that this is the VkRenderingAttachmentInfo we defined we would be writing into in our VkRenderingInfo (dynamic rendering info)
-    vkutil::transition_image(cmd, _msaaImage.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_ASPECT_COLOR_BIT);
+    //vkutil::transition_image(cmd, _msaaImage.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_ASPECT_COLOR_BIT);
     vkutil::transition_image(cmd, _drawImage.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_ASPECT_COLOR_BIT);
     vkutil::transition_image(cmd, _depthImage.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL, VK_IMAGE_ASPECT_DEPTH_BIT);
 

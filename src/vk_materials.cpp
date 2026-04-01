@@ -31,10 +31,10 @@ void GLTFMetallic_Roughness::build_pipelines(VulkanEngine* engine)
 	layoutBuilder.add_binding(3, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER); //normal
 	materialLayout = layoutBuilder.build(engine->_device, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT);
 
-	VkDescriptorSetLayout layouts[] = { engine->_perFrameDescriptorLayout, materialLayout };
+	VkDescriptorSetLayout layouts[] = { engine->_perFrameDescriptorLayout, engine->_shadowDescriptorLayout, materialLayout };
 
 	VkPipelineLayoutCreateInfo mesh_layout_info = vkinit::pipeline_layout_create_info();
-	mesh_layout_info.setLayoutCount = 2;
+	mesh_layout_info.setLayoutCount = 3;
 	mesh_layout_info.pSetLayouts = layouts;
 	mesh_layout_info.pPushConstantRanges = &matrixRange;
 	mesh_layout_info.pushConstantRangeCount = 1;

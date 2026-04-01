@@ -3,36 +3,29 @@
 #extension GL_GOOGLE_include_directive : require
 #extension GL_EXT_buffer_reference : require
 
-#include "input_structures.glsl"
+#include "per_object_layout.glsl" //push constants
+
+//set 0: per frame (camera)
+#include "per_frame_layout.glsl" 
+
+//set 1: shadowmap, dont need
+
+//set 2: material data
+layout(set = 2, binding = 0) uniform GLTFMaterialData
+{   
+	vec4 colorFactors;
+	vec4 metal_rough_factors;
+	
+} materialData;
+layout(set = 2, binding = 1) uniform sampler2D colorTex;
+layout(set = 2, binding = 2) uniform sampler2D metalRoughTex;
+layout(set = 2, binding = 3) uniform sampler2D normalTex;
 
 layout (location = 0) out vec3 outNormal;
 layout (location = 1) out vec3 outColor;
 layout (location = 2) out vec2 outUV;
 layout (location = 3) out vec4 outFragPosWorld;
 layout (location = 4) out vec4 outTangent;
-
-struct Vertex 
-{
-	vec3 position;
-	float uv_x;
-	vec3 normal;
-	float uv_y;
-	vec4 color;
-	vec4 tangent;
-}; 
-
-layout(buffer_reference, std430) readonly buffer VertexBuffer
-{ 
-	Vertex vertices[];
-};
-//push constants block
-layout( push_constant ) uniform constants
-{
-	mat4 render_matrix;
-	VertexBuffer vertexBuffer;
-} PushConstants;
-
-//descriptor set inputs come from input_structures.glsl
 
 void main() 
 {

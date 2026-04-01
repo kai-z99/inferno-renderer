@@ -72,7 +72,7 @@ std::optional<std::size_t> resolve_texture_image_index(const fastgltf::Texture& 
 
 //https://vkguide.dev/docs/new_chapter_5/gltf_textures/
 //modified to run at relative to repo root, and to support ByteView 
-std::optional<AllocatedImage> load_image(VulkanEngine* engine, fastgltf::Asset& asset, fastgltf::Image& image, const std::filesystem::path& assetDirectory, VkFormat format)
+std::optional<AllocatedImage> load_image_from_gltf(VulkanEngine* engine, fastgltf::Asset& asset, fastgltf::Image& image, const std::filesystem::path& assetDirectory, VkFormat format)
 {
     AllocatedImage newImage {};
 
@@ -285,7 +285,7 @@ std::optional<std::shared_ptr<LoadedGLTF>> loadGltf(VulkanEngine *engine, std::f
             return it->second;
         }
 
-        std::optional<AllocatedImage> img = load_image(engine, gltf, gltf.images[imageIndex], path.parent_path(), format);
+        std::optional<AllocatedImage> img = load_image_from_gltf(engine, gltf, gltf.images[imageIndex], path.parent_path(), format);
 
         AllocatedImage finalImage = img.value_or(engine->error_checkerboard_image());
 
@@ -634,6 +634,43 @@ std::optional<std::shared_ptr<LoadedGLTF>> loadGltf(VulkanEngine *engine, std::f
     }
 
     return scene;
+}
+
+std::optional<AllocatedImage> load_hdr_image(VulkanEngine *engine, const std::filesystem::path &path)
+{
+    int width, height, channels;
+
+    float* data = stbi_loadf(path.string().c_str(), &width, &height, &channels, 4);
+    if (!data) 
+    {
+        return {};
+    }
+
+    VkExtent3D size
+    {
+        static_cast<uint32_t>(width),
+        static_cast<uint32_t>(height),
+        1
+    };
+    
+    size_t byteSize =
+        static_cast<size_t>(width) *
+        static_cast<size_t>(height) *
+        4 *
+        sizeof(float);
+
+    AllocatedImage image = vkutil::upload_image(
+        *engine,
+        data,
+        size,
+        VK_FORMAT_R32G32B32A32_SFLOAT,
+        VK_IMAGE_USAGE_SAMPLED_BIT,
+        true,
+        byteSize);
+
+    stbi_image_free(data);
+
+    return image;
 }
 
 void LoadedGLTF::Draw(const glm::mat4 &topMatrix, DrawContext &ctx)

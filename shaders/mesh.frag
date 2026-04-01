@@ -1,9 +1,25 @@
 #version 450
 
 #extension GL_GOOGLE_include_directive : require
-#include "input_structures.glsl"
 #include "lighting.glsl"
 #include "pcss.glsl"
+
+//set 0: per frame descriptor set bindings
+#include "per_frame_layout.glsl"
+
+//set 1: shadow map
+layout(set = 1, binding = 0) uniform sampler2D shadowMap;
+
+//set 2: materials
+layout(set = 2, binding = 0) uniform GLTFMaterialData
+{   
+	vec4 colorFactors;
+	vec4 metal_rough_factors;
+	
+} materialData;
+layout(set = 2, binding = 1) uniform sampler2D colorTex;
+layout(set = 2, binding = 2) uniform sampler2D metalRoughTex;
+layout(set = 2, binding = 3) uniform sampler2D normalTex;
 
 layout (location = 0) in vec3 inNormal;
 layout (location = 1) in vec3 inColor;

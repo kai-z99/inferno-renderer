@@ -59,3 +59,5 @@ private:
 };
 
 std::optional<std::shared_ptr<LoadedGLTF>> loadGltf(VulkanEngine* engine, std::filesystem::path filePath);
+
+std::optional<AllocatedImage> load_hdr_image(VulkanEngine* engine, const std::filesystem::path& path);
