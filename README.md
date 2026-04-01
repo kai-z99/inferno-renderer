@@ -2,10 +2,7 @@
 
 WIP Vulkan renderer.
 
-- Current status: working on PBR pipeline.
-- todo:
-  - hdr
-  - ibl
+- Current status: working on IBL
 
 ## Install (Linux)
 
@@ -62,6 +59,4 @@ path/to/inferno-renderer/build
 ## Run (Windows)
 - Set "engine" as the startup project in VS.
 - Click the run button.
-
-<img width="1919" height="1078" alt="image" src="https://github.com/user-attachments/assets/fd5836e9-aed9-4ffc-8e06-75f0bcdaf783" />
 
