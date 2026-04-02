@@ -76,12 +76,15 @@ private:
 	FrameData& get_current_frame() { return _frames[_frameNumber % FRAME_OVERLAP]; }
 
 	// initialization
+	void init_window();
 	void init_vulkan();
 	void init_swapchain();
 	void init_render_targets();
 	void init_commands();
 	void init_sync_structures();
-	void init_descriptors();
+	void init_descriptor_layouts();
+	void init_static_descriptor_sets();
+	void init_allocators();
 	
 	void init_imgui();
 	void init_default_data();
@@ -94,16 +97,18 @@ private:
 	void init_equi_to_cube_pipeline();
 	void init_pipelines();
 
-	void create_swapchain(uint32_t width, uint32_t height);
-	void create_render_targets();
-	void destroy_swapchain();
-	void destroy_render_targets();
-	void resize_swapchain();
-	void update_draw_descriptors();
 	AllocatedImage create_cubemap_from_equi(const AllocatedImage& hdrEqui, uint32_t cubeSize);
 
+	void create_swapchain(uint32_t width, uint32_t height);
+	void create_render_targets(bool onWindowResize = false);
+	void destroy_swapchain();
+	void destroy_render_targets();
+	void resize_swapchain_and_render_targets();
+	void update_draw_descriptors();
+
+	void draw_scene(VkCommandBuffer cmd);
 	void draw_skybox(VkCommandBuffer cmd, VkDescriptorSet& perFrameDescriptorSet);
-	void draw_geometry(VkCommandBuffer cmd);
+	void draw_geometry(VkCommandBuffer cmd, VkDescriptorSet& perFrameDescriptorSet);
 	void draw_shadow_map(VkCommandBuffer cmd);
 	void draw_tonemap(VkCommandBuffer cmd);
 	void draw_imgui(VkCommandBuffer cmd, VkImageView targetImageView);

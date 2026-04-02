@@ -39,7 +39,7 @@ vec3 faceUvToDir(int face, vec2 uv)
 
 void main()
 {
-    vec3 dir = faceUvToDir(pc.faceIndex, inUV);
+    vec3 dir = faceUvToDir(pc.faceIndex, inUV); //cube map space
     vec2 uv  = sampleSphericalMap(dir);
     vec3 c   = texture(equirectangularMap, uv).rgb;
     outColor = vec4(c, 1.0);
