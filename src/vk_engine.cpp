@@ -481,6 +481,8 @@ void VulkanEngine::update_draw_descriptors()
 
 AllocatedImage VulkanEngine::create_cubemap_from_equi(const AllocatedImage &hdrEqui, uint32_t cubeSize)
 {
+    assert(hdrEqui.imageFormat == kEnvironmentMapFormat);
+
     // 1. Allocate cubemap image
 
     VmaAllocationCreateInfo allocInfo = {};
@@ -488,11 +490,11 @@ AllocatedImage VulkanEngine::create_cubemap_from_equi(const AllocatedImage &hdrE
     allocInfo.requiredFlags = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
     
     AllocatedImage cubemap;
-    cubemap.imageFormat = hdrEqui.imageFormat;
+    cubemap.imageFormat = kEnvironmentMapFormat;
     cubemap.imageExtent = VkExtent3D{ cubeSize, cubeSize, 1 };
 
     VkImageUsageFlags usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
-    VkImageCreateInfo cimg_info = vkinit::cubemap_create_info(hdrEqui.imageFormat, usage, cubeSize);
+    VkImageCreateInfo cimg_info = vkinit::cubemap_create_info(kEnvironmentMapFormat, usage, cubeSize);
     vmaCreateImage(_allocator, &cimg_info, &allocInfo, &cubemap.image, &cubemap.allocation, nullptr);
 
     VkImageViewCreateInfo sview_info = vkinit::cubemap_view_create_info(cubemap.imageFormat, cubemap.image, VK_IMAGE_ASPECT_COLOR_BIT);
@@ -516,6 +518,7 @@ AllocatedImage VulkanEngine::create_cubemap_from_equi(const AllocatedImage &hdrE
     }
 
     // 3. Make descriptor point to source image
+    _equiToCubeDescriptorSet = globalDescriptorAllocator.allocate(_device, _equiToCubeDescriptorLayout);
     {
         DescriptorWriter writer;
         writer.write_image(0, hdrEqui.imageView, _defaultSamplerLinear, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
@@ -661,7 +664,7 @@ void VulkanEngine::init_default_data()
     sampl.borderColor = VK_BORDER_COLOR_FLOAT_OPAQUE_WHITE;
     vkCreateSampler(_device, &sampl, nullptr, &_shadowSampler);
 
-    std::optional<AllocatedImage> skybox = load_hdr_image(this, "assets/test_skybox.hdr").value();
+    std::optional<AllocatedImage> skybox = load_hdr_image(this, "assets/test_skybox2.hdr").value();
     assert(skybox.has_value());
     _skyboxImage = skybox.value();
 
@@ -751,18 +754,19 @@ void VulkanEngine::init_descriptors()
         _skyboxDescriptorLayout = builder.build(_device, VK_SHADER_STAGE_FRAGMENT_BIT);
     }
 
-    _skyboxDescriptorSet = globalDescriptorAllocator.allocate(_device, _skyboxDescriptorLayout);
-    {
-        DescriptorWriter writer;
+    //well bind the image once its created from the equi -> cubemap function
+   // _skyboxDescriptorSet = globalDescriptorAllocator.allocate(_device, _skyboxDescriptorLayout);
+    // {
+    //     DescriptorWriter writer;
 
-        writer.write_image(0, 
-            _skyboxImage.imageView, 
-            _defaultSamplerLinear, 
-            VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, //read only
-            VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER); 
+    //     writer.write_image(0, 
+    //         _skyboxImage.imageView, 
+    //         _defaultSamplerLinear, 
+    //         VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, //read only
+    //         VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER); 
         
-        writer.update_set(_device, _skyboxDescriptorSet);
-    }
+    //     writer.update_set(_device, _skyboxDescriptorSet);
+    // }
 
     // EQUI TO CUBE
     {
@@ -771,8 +775,8 @@ void VulkanEngine::init_descriptors()
 
         _equiToCubeDescriptorLayout = builder.build(_device, VK_SHADER_STAGE_FRAGMENT_BIT);
     }
-    _equiToCubeDescriptorSet = globalDescriptorAllocator.allocate(_device, _equiToCubeDescriptorLayout);
 
+    //_equiToCubeDescriptorSet = globalDescriptorAllocator.allocate(_device, _equiToCubeDescriptorLayout);
     // {
     //     DescriptorWriter writer;
 
@@ -1020,7 +1024,7 @@ void VulkanEngine::init_equi_to_cube_pipeline()
     pipelineBuilder.set_multisampling_none(); 
     pipelineBuilder.disable_depthtest();
     pipelineBuilder.disable_blending();
-    pipelineBuilder.set_color_attachment_format(_skyboxImage.imageFormat);
+    pipelineBuilder.set_color_attachment_format(kEnvironmentMapFormat);
     pipelineBuilder._pipelineLayout = _equiToCubePipelineLayout;
 
     _equiToCubePipeline = pipelineBuilder.build_pipeline(_device);
@@ -1120,6 +1124,18 @@ void VulkanEngine::init_scene()
     _environmentCubemap.imageExtent = VkExtent3D {_environmentMapResolution, _environmentMapResolution, 1};
     _environmentCubemap.imageFormat = _skyboxImage.imageFormat;
     _environmentCubemap = create_cubemap_from_equi(_skyboxImage, _environmentMapResolution);
+
+    _skyboxDescriptorSet = globalDescriptorAllocator.allocate(_device, _skyboxDescriptorLayout);
+    {
+        DescriptorWriter writer;
+        writer.write_image(
+            0,
+            _environmentCubemap.imageView,
+            _defaultSamplerLinear,
+            VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+            VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
+        writer.update_set(_device, _skyboxDescriptorSet);
+    }
 }
 
 void VulkanEngine::cleanup()

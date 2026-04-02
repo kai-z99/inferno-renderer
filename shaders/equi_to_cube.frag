@@ -8,7 +8,7 @@ layout(location = 0) out vec4 outColor;
 
 layout(push_constant) uniform Push
 {
-    int faceIndex; // 0: +X, 1:-X, 2:+Y, 3:-Y, 4:+Z, 5:-Z
+    int faceIndex; // 0:+X, 1:-X, 2:+Y, 3:-Y, 4:+Z, 5:-Z
 } pc;
 
 const vec2 invAtan = vec2(0.15915494, 0.31830989); // 1/(2pi), 1/pi
@@ -30,7 +30,7 @@ vec3 faceUvToDir(int face, vec2 uv)
 
     if (face == 0) return normalize(vec3( 1.0, -y, -x)); // +X
     if (face == 1) return normalize(vec3(-1.0, -y,  x)); // -X
-    if (face == 2) return normalize(vec3( x,  1.0,  y)); // +Y
+    if (face == 2) return normalize(vec3( x, 1.0,  y));  // +Y
     if (face == 3) return normalize(vec3( x, -1.0, -y)); // -Y
     if (face == 4) return normalize(vec3( x, -y,  1.0)); // +Z
                    return normalize(vec3(-x, -y, -1.0)); // -Z

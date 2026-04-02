@@ -664,7 +664,7 @@ std::optional<AllocatedImage> load_hdr_image(VulkanEngine *engine, const std::fi
         *engine,
         data,
         size,
-        VK_FORMAT_R32G32B32A32_SFLOAT,
+        VulkanEngine::kEnvironmentMapFormat,
         VK_IMAGE_USAGE_SAMPLED_BIT,
         true,
         byteSize);

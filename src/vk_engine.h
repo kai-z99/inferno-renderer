@@ -50,6 +50,9 @@ class VulkanEngine
 public:
 	static VulkanEngine& Get();
 
+	//im going to assume that equi -> hdr stays the same format.
+	static constexpr VkFormat kEnvironmentMapFormat = VK_FORMAT_R32G32B32A32_SFLOAT;
+
 	// lifecycle
 	void init();
 	void cleanup();
