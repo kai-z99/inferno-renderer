@@ -1024,7 +1024,7 @@ void VulkanEngine::init_equi_to_cube_pipeline()
     pipelineBuilder.set_multisampling_none(); 
     pipelineBuilder.disable_depthtest();
     pipelineBuilder.disable_blending();
-    pipelineBuilder.set_color_attachment_format(kEnvironmentMapFormat);
+    pipelineBuilder.set_color_attachment_format(kEnvironmentMapFormat); //cubemap is same format as equi
     pipelineBuilder._pipelineLayout = _equiToCubePipelineLayout;
 
     _equiToCubePipeline = pipelineBuilder.build_pipeline(_device);
