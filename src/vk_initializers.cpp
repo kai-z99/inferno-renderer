@@ -264,48 +264,99 @@ VkDescriptorBufferInfo vkinit::buffer_info(VkBuffer buffer, VkDeviceSize offset,
 }
 
 //> image_set
-VkImageCreateInfo vkinit::image_create_info(VkFormat format, VkImageUsageFlags usageFlags, VkExtent3D extent, VkSampleCountFlagBits samples)
+VkImageCreateInfo vkinit::image_create_info(
+    VkFormat format, 
+    VkImageUsageFlags usageFlags, 
+    VkExtent3D extent, 
+    VkSampleCountFlagBits samples,
+    uint32_t mipLevels,
+    uint32_t arrayLayers,
+    VkImageCreateFlags flags)
 {
     VkImageCreateInfo info = {};
     info.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
     info.pNext = nullptr;
-
+    info.flags = flags;
     info.imageType = VK_IMAGE_TYPE_2D;
-
     info.format = format;
     info.extent = extent;
-
-    info.mipLevels = 1;
-    info.arrayLayers = 1;
-
-    //for MSAA. we will not be using it by default, so default it to 1 sample per pixel.
+    info.mipLevels = mipLevels;
+    info.arrayLayers = arrayLayers;
     info.samples = samples;
-
-    //optimal tiling, which means the image is stored on the best gpu format
-    info.tiling = VK_IMAGE_TILING_OPTIMAL;
+    info.tiling = VK_IMAGE_TILING_OPTIMAL; //image is stored on the best gpu format
     info.usage = usageFlags;
 
     return info;
 }
 
-VkImageViewCreateInfo vkinit::imageview_create_info(VkFormat format, VkImage image, VkImageAspectFlags aspectFlags)
+VkImageCreateInfo vkinit::cubemap_create_info(
+    VkFormat format,
+    VkImageUsageFlags usageFlags,
+    uint32_t size,
+    uint32_t mipLevels)
+{
+    VkExtent3D extent{};
+    extent.width  = size;
+    extent.height = size;
+    extent.depth  = 1;
+
+    return image_create_info(
+        format,
+        usageFlags,
+        extent,
+        VK_SAMPLE_COUNT_1_BIT,
+        mipLevels,
+        6,
+        VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT
+    );
+}
+
+VkImageViewCreateInfo vkinit::imageview_create_info(
+    VkFormat format,
+    VkImage image,
+    VkImageAspectFlags aspectFlags,
+    VkImageViewType viewType,
+    uint32_t mipLevels,
+    uint32_t baseMipLevel,
+    uint32_t layerCount,
+    uint32_t baseArrayLayer)
 {
     // build a image-view for the depth image to use for rendering
     VkImageViewCreateInfo info = {};
     info.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
     info.pNext = nullptr;
 
-    info.viewType = VK_IMAGE_VIEW_TYPE_2D;
+    info.viewType = viewType;
     info.image = image;
     info.format = format;
-    info.subresourceRange.baseMipLevel = 0;
-    info.subresourceRange.levelCount = 1;
-    info.subresourceRange.baseArrayLayer = 0;
-    info.subresourceRange.layerCount = 1;
+    info.subresourceRange.baseMipLevel = baseMipLevel;
+    info.subresourceRange.levelCount = mipLevels;
+    info.subresourceRange.baseArrayLayer = baseArrayLayer;
+    info.subresourceRange.layerCount = layerCount;
     info.subresourceRange.aspectMask = aspectFlags;
 
     return info;
 }
+
+VkImageViewCreateInfo vkinit::cubemap_view_create_info(
+    VkFormat format,
+    VkImage image,
+    VkImageAspectFlags aspectFlags,
+    uint32_t mipLevels,
+    uint32_t baseMipLevel)
+{
+    return imageview_create_info(
+        format,
+        image,
+        aspectFlags,
+        VK_IMAGE_VIEW_TYPE_CUBE,
+        mipLevels,
+        baseMipLevel,
+        6,
+        0
+    );
+}
+
 //< image_set
 VkPipelineLayoutCreateInfo vkinit::pipeline_layout_create_info()
 {

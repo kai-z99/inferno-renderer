@@ -43,8 +43,39 @@ VkWriteDescriptorSet write_descriptor_buffer(VkDescriptorType type, VkDescriptor
     VkDescriptorBufferInfo* bufferInfo, uint32_t binding);
 VkDescriptorBufferInfo buffer_info(VkBuffer buffer, VkDeviceSize offset, VkDeviceSize range);
 
-VkImageCreateInfo image_create_info(VkFormat format, VkImageUsageFlags usageFlags, VkExtent3D extent, VkSampleCountFlagBits samples = VK_SAMPLE_COUNT_1_BIT);
-VkImageViewCreateInfo imageview_create_info(VkFormat format, VkImage image, VkImageAspectFlags aspectFlags);
+VkImageCreateInfo image_create_info(
+    VkFormat format, 
+    VkImageUsageFlags usageFlags, 
+    VkExtent3D extent, 
+    VkSampleCountFlagBits samples = VK_SAMPLE_COUNT_1_BIT,
+    uint32_t mipLevels = 1,
+    uint32_t arrayLayers = 1,
+    VkImageCreateFlags flags = 0);
+
+VkImageCreateInfo cubemap_create_info(
+    VkFormat format,
+    VkImageUsageFlags usageFlags,
+    uint32_t size,
+    uint32_t mipLevels = 1);
+
+VkImageViewCreateInfo imageview_create_info(
+    VkFormat format,
+    VkImage image,
+    VkImageAspectFlags aspectFlags,
+    VkImageViewType viewType = VK_IMAGE_VIEW_TYPE_2D,
+    uint32_t mipLevels = 1,
+    uint32_t baseMipLevel = 0,
+    uint32_t layerCount = 1,
+    uint32_t baseArrayLayer = 0);
+
+VkImageViewCreateInfo cubemap_view_create_info(
+    VkFormat format,
+    VkImage image,
+    VkImageAspectFlags aspectFlags,
+    uint32_t mipLevels = 1,
+    uint32_t baseMipLevel = 0);
+
+
 VkPipelineLayoutCreateInfo pipeline_layout_create_info();
 VkPipelineShaderStageCreateInfo pipeline_shader_stage_create_info(VkShaderStageFlagBits stage,
     VkShaderModule shaderModule,

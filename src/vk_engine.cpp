@@ -86,11 +86,82 @@ static AutoCVar_Int cvarTonemapIndex(
     CVarEditHint::Step);
 
 
+//clip space test 
+static bool is_visible_basic(const RenderObject& obj, const glm::mat4& viewproj)
+{
+    static const std::array<glm::vec3, 8> corners = 
+    {
+        glm::vec3{ 1,  1,  1},
+        glm::vec3{ 1,  1, -1},
+        glm::vec3{ 1, -1,  1},
+        glm::vec3{ 1, -1, -1},
+        glm::vec3{-1,  1,  1},
+        glm::vec3{-1,  1, -1},
+        glm::vec3{-1, -1,  1},
+        glm::vec3{-1, -1, -1},
+    };
+
+    glm::mat4 m = viewproj * obj.transform;
+
+    std::array<glm::vec4, 8> clipCorners;
+    for (int i = 0; i < 8; ++i)
+    {
+        glm::vec3 p = obj.bounds.origin + corners[i] * obj.bounds.extents;
+        clipCorners[i] = m * glm::vec4(p, 1.0f);
+    }
+
+    auto all_outside = [&](auto pred) -> bool
+    {
+        for (const glm::vec4& v : clipCorners)
+        {
+            if (!pred(v)) return false;
+        }
+        return true;
+    };
+
+    //x must be in [-w,w]
+    if (all_outside([](const glm::vec4& v) { return v.x < -v.w; })) return false;
+    if (all_outside([](const glm::vec4& v) { return v.x >  v.w; })) return false;
+
+    //y must be in [-w,w]
+    if (all_outside([](const glm::vec4& v) { return v.y < -v.w; })) return false;
+    if (all_outside([](const glm::vec4& v) { return v.y >  v.w; })) return false;
+
+    // z must be in [0,w]
+    if (all_outside([](const glm::vec4& v) { return v.z < 0.0f; })) return false;
+    if (all_outside([](const glm::vec4& v) { return v.z > v.w; })) return false;
+
+    return true;
+}
+
+static bool is_visible_planes(RenderObject& obj, const glm::mat4& viewproj)
+{
+    return 1;
+}
+
+static void set_viewport_scissor(VkCommandBuffer cmd, VkExtent2D extent)
+{
+    VkViewport viewport{};
+    viewport.x = 0.0f;
+    viewport.y = 0.0f;
+    viewport.width = static_cast<float>(extent.width);
+    viewport.height = static_cast<float>(extent.height);
+    viewport.minDepth = 0.0f;
+    viewport.maxDepth = 1.0f;
+    vkCmdSetViewport(cmd, 0, 1, &viewport);
+
+    VkRect2D scissor{};
+    scissor.offset = {0, 0};
+    scissor.extent = extent;
+    vkCmdSetScissor(cmd, 0, 1, &scissor);
+}
+
 VulkanEngine *loadedEngine = nullptr;
 
 VulkanEngine &VulkanEngine::Get() { return *loadedEngine; }
 
 constexpr bool bUseValidationLayers = true;
+
 
 void VulkanEngine::init()
 {
@@ -408,6 +479,87 @@ void VulkanEngine::update_draw_descriptors()
     }
 }
 
+AllocatedImage VulkanEngine::create_cubemap_from_equi(const AllocatedImage &hdrEqui, uint32_t cubeSize)
+{
+    // 1. Allocate cubemap image
+
+    VmaAllocationCreateInfo allocInfo = {};
+    allocInfo.usage = VMA_MEMORY_USAGE_GPU_ONLY;
+    allocInfo.requiredFlags = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
+    
+    AllocatedImage cubemap;
+    cubemap.imageFormat = hdrEqui.imageFormat;
+    cubemap.imageExtent = VkExtent3D{ cubeSize, cubeSize, 1 };
+
+    VkImageUsageFlags usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+    VkImageCreateInfo cimg_info = vkinit::cubemap_create_info(hdrEqui.imageFormat, usage, cubeSize);
+    vmaCreateImage(_allocator, &cimg_info, &allocInfo, &cubemap.image, &cubemap.allocation, nullptr);
+
+    VkImageViewCreateInfo sview_info = vkinit::cubemap_view_create_info(cubemap.imageFormat, cubemap.image, VK_IMAGE_ASPECT_COLOR_BIT);
+    VK_CHECK(vkCreateImageView(_device, &sview_info, nullptr, &cubemap.imageView));
+
+    // 2. Create views for each face
+
+    std::array<VkImageView, 6> faceViews{};
+    for (uint32_t face = 0; face < 6; ++face)
+    {
+        VkImageViewCreateInfo faceViewInfo = vkinit::imageview_create_info(
+            cubemap.imageFormat,
+            cubemap.image,
+            VK_IMAGE_ASPECT_COLOR_BIT,
+            VK_IMAGE_VIEW_TYPE_2D,
+            1,      // mipLevels
+            0,      // baseMipLevel
+            1,      // layerCount
+            face);  // baseArrayLayer
+        VK_CHECK(vkCreateImageView(_device, &faceViewInfo, nullptr, &faceViews[face]));
+    }
+
+    // 3. Make descriptor point to source image
+    {
+        DescriptorWriter writer;
+        writer.write_image(0, hdrEqui.imageView, _defaultSamplerLinear, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
+        writer.update_set(_device, _equiToCubeDescriptorSet);
+    }
+
+    // 4. Render to each cubemap face!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!1
+    immediate_submit([&](VkCommandBuffer cmd)
+    {
+        vkutil::transition_image(cmd, cubemap.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_ASPECT_COLOR_BIT);
+
+        for (uint32_t face = 0; face < 6; ++face)
+        {
+            //attach that face image view
+            VkRenderingAttachmentInfo colorAttachment = vkinit::attachment_info(faceViews[face], nullptr, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+            VkRenderingInfo renderInfo = vkinit::rendering_info(VkExtent2D{ cubeSize, cubeSize }, &colorAttachment, nullptr);
+
+            //start
+            vkCmdBeginRendering(cmd, &renderInfo);
+
+            //vp / sc
+            set_viewport_scissor(cmd, {cubeSize, cubeSize});
+
+            //bind pipeline/desc/push
+            vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, _equiToCubePipeline);
+            vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, _equiToCubePipelineLayout, 0, 1, &_equiToCubeDescriptorSet, 0, nullptr);
+            vkCmdPushConstants(cmd, _equiToCubePipelineLayout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(uint32_t), &face);
+
+            //draw face
+            vkCmdDraw(cmd, 3, 1, 0, 0);
+            vkCmdEndRendering(cmd);
+        }
+
+        vkutil::transition_image(cmd, cubemap.image, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_ASPECT_COLOR_BIT);
+    });
+
+    for (VkImageView v : faceViews)
+    {
+        vkDestroyImageView(_device, v, nullptr);
+    }
+
+    return cubemap;
+}
+
 void VulkanEngine::init_commands()
 {
     fmt::print("Initializing command pools/buffers...\n");
@@ -524,6 +676,7 @@ void VulkanEngine::init_default_data()
 		vkutil::destroy_image(_allocator, _device, _blackImage);
 		vkutil::destroy_image(_allocator, _device, _errorCheckerboardImage);
         vkutil::destroy_image(_allocator, _device, _skyboxImage);
+        vkutil::destroy_image(_allocator, _device, _environmentCubemap);
 	});
 }
 
@@ -534,9 +687,9 @@ void VulkanEngine::init_descriptors()
     //Create a global descriptor allocator.
     std::vector<DescriptorAllocatorGrowable::PoolSizeRatio> sizes =
     {
-        {VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1}, 
-    	{VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1},
-        {VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 3}
+        {VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 5}, 
+    	{VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 5},
+        {VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 10}
     };
     globalDescriptorAllocator.init(_device, 10, sizes); //10 sets can be allocated  from this one
 
@@ -611,6 +764,27 @@ void VulkanEngine::init_descriptors()
         writer.update_set(_device, _skyboxDescriptorSet);
     }
 
+    // EQUI TO CUBE
+    {
+        DescriptorLayoutBuilder builder;
+        builder.add_binding(0, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER); //equirectanglar texture
+
+        _equiToCubeDescriptorLayout = builder.build(_device, VK_SHADER_STAGE_FRAGMENT_BIT);
+    }
+    _equiToCubeDescriptorSet = globalDescriptorAllocator.allocate(_device, _equiToCubeDescriptorLayout);
+
+    // {
+    //     DescriptorWriter writer;
+
+    //     writer.write_image(0, 
+    //         _skyboxImage.imageView, 
+    //         _defaultSamplerLinear, 
+    //         VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, //read only
+    //         VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER); 
+        
+    //     writer.update_set(_device, _equiToCubeDescriptorSet);
+    // }
+
     //cleanup
     _mainDeletionQueue.push_function([&]()
     {
@@ -619,6 +793,7 @@ void VulkanEngine::init_descriptors()
         vkDestroyDescriptorSetLayout(_device, _shadowDescriptorLayout, nullptr);
         vkDestroyDescriptorSetLayout(_device, _tonemapDescriptorLayout, nullptr);
         vkDestroyDescriptorSetLayout(_device, _skyboxDescriptorLayout, nullptr);
+        vkDestroyDescriptorSetLayout(_device, _equiToCubeDescriptorLayout, nullptr);
     });
 
     //make our per frame descriptor allocators. We use these each frame to allocate descriptor sets for the per frame resources.
@@ -651,6 +826,7 @@ void VulkanEngine::init_pipelines()
     init_shadow_pipeline();
     init_tonemap_pipeline();
     init_skybox_pipeline();
+    init_equi_to_cube_pipeline();
 }
 
 void VulkanEngine::init_shadow_pipeline()
@@ -699,6 +875,8 @@ void VulkanEngine::init_shadow_pipeline()
         vkDestroyPipeline(_device, _shadowPipeline, nullptr);
         vkDestroyPipelineLayout(_device, _shadowPipelineLayout, nullptr);
     });
+
+    
 }
 
 void VulkanEngine::init_tonemap_pipeline()
@@ -727,7 +905,7 @@ void VulkanEngine::init_tonemap_pipeline()
     layoutInfo.pSetLayouts = setLayouts;
     layoutInfo.pushConstantRangeCount = 1;
     layoutInfo.pPushConstantRanges = &pushRange;
-
+    
     VK_CHECK(vkCreatePipelineLayout(_device, &layoutInfo, nullptr, &_tonemapPipelineLayout));
 
     PipelineBuilder pipelineBuilder;
@@ -754,7 +932,6 @@ void VulkanEngine::init_tonemap_pipeline()
         vkDestroyPipeline(_device, _tonemapPipeline, nullptr);
         vkDestroyPipelineLayout(_device, _tonemapPipelineLayout, nullptr);
     });
-
 }
 
 void VulkanEngine::init_skybox_pipeline()
@@ -805,6 +982,58 @@ void VulkanEngine::init_skybox_pipeline()
     });
 }
 
+void VulkanEngine::init_equi_to_cube_pipeline()
+{
+
+    VkShaderModule vert, frag;
+    if (!vkutil::load_shader_module("shaders/spirv/fullscreen.vert.spv", _device, &vert)) 
+    {
+        fmt::println("Error loading vertex shader");
+        return;
+    }
+    if (!vkutil::load_shader_module("shaders/spirv/equi_to_cube.frag.spv", _device, &frag)) 
+    {
+        fmt::println("Error loading fragment shader");
+        return;
+    }
+
+    VkDescriptorSetLayout setLayouts[] = { _equiToCubeDescriptorLayout };
+
+    VkPushConstantRange pushRange{};
+    pushRange.offset = 0;
+    pushRange.size = sizeof(int32_t);
+    pushRange.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+
+    VkPipelineLayoutCreateInfo layoutInfo = vkinit::pipeline_layout_create_info();
+    layoutInfo.setLayoutCount = 1;
+    layoutInfo.pSetLayouts = setLayouts;
+    layoutInfo.pushConstantRangeCount = 1; 
+    layoutInfo.pPushConstantRanges = &pushRange;
+
+    VK_CHECK(vkCreatePipelineLayout(_device, &layoutInfo, nullptr, &_equiToCubePipelineLayout));
+
+    PipelineBuilder pipelineBuilder;
+    pipelineBuilder.set_shaders(vert, frag);
+    pipelineBuilder.set_input_topology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
+    pipelineBuilder.set_polygon_mode(VK_POLYGON_MODE_FILL);
+    pipelineBuilder.set_cull_mode(VK_CULL_MODE_NONE, VK_FRONT_FACE_CLOCKWISE);
+    pipelineBuilder.set_multisampling_none(); 
+    pipelineBuilder.disable_depthtest();
+    pipelineBuilder.disable_blending();
+    pipelineBuilder.set_color_attachment_format(_skyboxImage.imageFormat);
+    pipelineBuilder._pipelineLayout = _equiToCubePipelineLayout;
+
+    _equiToCubePipeline = pipelineBuilder.build_pipeline(_device);
+
+    vkDestroyShaderModule(_device, vert, nullptr);
+    vkDestroyShaderModule(_device, frag, nullptr);
+
+    _mainDeletionQueue.push_function([=, this]()
+    {
+        vkDestroyPipeline(_device, _equiToCubePipeline, nullptr);
+        vkDestroyPipelineLayout(_device, _equiToCubePipelineLayout, nullptr);
+    });
+}
 
 void VulkanEngine::init_imgui()
 {
@@ -877,15 +1106,20 @@ void VulkanEngine::init_scene()
     mainCamera.yaw = 0;
 
     // init default scene
-    //std::string structurePath = { "assets/sponza/Sponza.gltf" };
+    std::string structurePath = { "assets/sponza/Sponza.gltf" };
     //std::string structurePath = { "assets/main_sponza/NewSponza_Main_glTF_003.gltf" };
-    std::string structurePath = { "assets/WaterBottle.glb" };
+    //std::string structurePath = { "assets/WaterBottle.glb" };
     //std::string structurePath = { "assets/ABeautifulGame.glb" };
     auto structureFile = loadGltf(this, structurePath);
 
     assert(structureFile.has_value());
 
     loadedScenes["structure"] = *structureFile;
+
+
+    _environmentCubemap.imageExtent = VkExtent3D {_environmentMapResolution, _environmentMapResolution, 1};
+    _environmentCubemap.imageFormat = _skyboxImage.imageFormat;
+    _environmentCubemap = create_cubemap_from_equi(_skyboxImage, _environmentMapResolution);
 }
 
 void VulkanEngine::cleanup()
@@ -936,76 +1170,6 @@ void VulkanEngine::cleanup()
 
     // clear engine pointer
     loadedEngine = nullptr;
-}
-
-//clip space test 
-static bool is_visible_basic(const RenderObject& obj, const glm::mat4& viewproj)
-{
-    static const std::array<glm::vec3, 8> corners = 
-    {
-        glm::vec3{ 1,  1,  1},
-        glm::vec3{ 1,  1, -1},
-        glm::vec3{ 1, -1,  1},
-        glm::vec3{ 1, -1, -1},
-        glm::vec3{-1,  1,  1},
-        glm::vec3{-1,  1, -1},
-        glm::vec3{-1, -1,  1},
-        glm::vec3{-1, -1, -1},
-    };
-
-    glm::mat4 m = viewproj * obj.transform;
-
-    std::array<glm::vec4, 8> clipCorners;
-    for (int i = 0; i < 8; ++i)
-    {
-        glm::vec3 p = obj.bounds.origin + corners[i] * obj.bounds.extents;
-        clipCorners[i] = m * glm::vec4(p, 1.0f);
-    }
-
-    auto all_outside = [&](auto pred) -> bool
-    {
-        for (const glm::vec4& v : clipCorners)
-        {
-            if (!pred(v)) return false;
-        }
-        return true;
-    };
-
-    //x must be in [-w,w]
-    if (all_outside([](const glm::vec4& v) { return v.x < -v.w; })) return false;
-    if (all_outside([](const glm::vec4& v) { return v.x >  v.w; })) return false;
-
-    //y must be in [-w,w]
-    if (all_outside([](const glm::vec4& v) { return v.y < -v.w; })) return false;
-    if (all_outside([](const glm::vec4& v) { return v.y >  v.w; })) return false;
-
-    // z must be in [0,w]
-    if (all_outside([](const glm::vec4& v) { return v.z < 0.0f; })) return false;
-    if (all_outside([](const glm::vec4& v) { return v.z > v.w; })) return false;
-
-    return true;
-}
-
-static bool is_visible_planes(RenderObject& obj, const glm::mat4& viewproj)
-{
-    return 1;
-}
-
-static void set_viewport_scissor(VkCommandBuffer cmd, VkExtent2D extent)
-{
-    VkViewport viewport{};
-    viewport.x = 0.0f;
-    viewport.y = 0.0f;
-    viewport.width = static_cast<float>(extent.width);
-    viewport.height = static_cast<float>(extent.height);
-    viewport.minDepth = 0.0f;
-    viewport.maxDepth = 1.0f;
-    vkCmdSetViewport(cmd, 0, 1, &viewport);
-
-    VkRect2D scissor{};
-    scissor.offset = {0, 0};
-    scissor.extent = extent;
-    vkCmdSetScissor(cmd, 0, 1, &scissor);
 }
 
 void VulkanEngine::draw_skybox(VkCommandBuffer cmd, VkDescriptorSet& perFrameDescriptorSet)

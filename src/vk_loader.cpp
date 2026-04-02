@@ -659,6 +659,7 @@ std::optional<AllocatedImage> load_hdr_image(VulkanEngine *engine, const std::fi
         4 *
         sizeof(float);
 
+
     AllocatedImage image = vkutil::upload_image(
         *engine,
         data,

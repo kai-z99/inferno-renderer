@@ -18,4 +18,6 @@ int main(int argc, char* argv[])
 // ClearCoat
 // ScreenSpaceSubSurfaceScattering
 // optimze shadowpass culling
+// emissive simple
+// paralax map
 

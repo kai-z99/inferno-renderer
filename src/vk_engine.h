@@ -88,6 +88,7 @@ private:
 	void init_shadow_pipeline();
 	void init_tonemap_pipeline();
 	void init_skybox_pipeline();
+	void init_equi_to_cube_pipeline();
 	void init_pipelines();
 
 	void create_swapchain(uint32_t width, uint32_t height);
@@ -96,6 +97,7 @@ private:
 	void destroy_render_targets();
 	void resize_swapchain();
 	void update_draw_descriptors();
+	AllocatedImage create_cubemap_from_equi(const AllocatedImage& hdrEqui, uint32_t cubeSize);
 
 	void draw_skybox(VkCommandBuffer cmd, VkDescriptorSet& perFrameDescriptorSet);
 	void draw_geometry(VkCommandBuffer cmd);
@@ -146,28 +148,34 @@ private:
 	AllocatedImage _shadowDepthImage;
 	AllocatedImage _tonemapImage;
 	AllocatedImage _skyboxImage;
+	AllocatedImage _environmentCubemap;
 	VkExtent2D _drawExtent;
 	float renderScale = 1.f;
 	uint32_t _shadowMapResolution = 1024;
-
+	uint32_t _environmentMapResolution = 1024;
 
 	// descriptors
 	DescriptorAllocatorGrowable globalDescriptorAllocator;
 	VkDescriptorSet _shadowDescriptorSet;
 	VkDescriptorSet _skyboxDescriptorSet;
 	VkDescriptorSet _tonemapDescriptorSet;
+	VkDescriptorSet _equiToCubeDescriptorSet;
 	VkDescriptorSetLayout _perFrameDescriptorLayout;
 	VkDescriptorSetLayout _shadowDescriptorLayout;
 	VkDescriptorSetLayout _skyboxDescriptorLayout;
 	VkDescriptorSetLayout _tonemapDescriptorLayout;
+	VkDescriptorSetLayout _equiToCubeDescriptorLayout;
 
 	// pipelines and materials
 	VkPipeline _skyboxPipeline;	
 	VkPipeline _shadowPipeline;
 	VkPipeline _tonemapPipeline;
+	VkPipeline _equiToCubePipeline;
 	VkPipelineLayout _skyboxPipelineLayout;
 	VkPipelineLayout _shadowPipelineLayout;
 	VkPipelineLayout _tonemapPipelineLayout;
+	VkPipelineLayout _equiToCubePipelineLayout;
+
 	GLTFMetallic_Roughness _metalRoughMaterial;
 
 	// scene state
