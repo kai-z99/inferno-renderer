@@ -168,13 +168,13 @@ private:
 
 	// descriptors
 	DescriptorAllocatorGrowable globalDescriptorAllocator;
-	VkDescriptorSet _shadowDescriptorSet;
+	VkDescriptorSet _lightingDescriptorSet;
 	VkDescriptorSet _skyboxDescriptorSet;
 	VkDescriptorSet _tonemapDescriptorSet;
 	VkDescriptorSet _equiToCubeDescriptorSet;
 	VkDescriptorSet _irradianceDescriptorSet;
 	VkDescriptorSetLayout _perFrameDescriptorLayout;
-	VkDescriptorSetLayout _shadowDescriptorLayout;
+	VkDescriptorSetLayout _lightingDescriptorLayout;
 	VkDescriptorSetLayout _skyboxDescriptorLayout;
 	VkDescriptorSetLayout _tonemapDescriptorLayout;
 	VkDescriptorSetLayout _equiToCubeDescriptorLayout;

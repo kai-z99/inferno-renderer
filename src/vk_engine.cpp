@@ -85,6 +85,18 @@ static AutoCVar_Int cvarTonemapIndex(
     },
     CVarEditHint::Step);
 
+static AutoCVar_Float cvarIblIntensity(
+    "r.ibl.intensity",
+    "Internal render scale",
+    1.0,
+    FloatCVarOptions{
+        .minValue = 0.0,
+        .maxValue = 3.0,
+        .step = 0.1f,
+        .format = "%.2f",
+    },
+    CVarEditHint::Slider);
+
 
 //clip space test 
 static bool is_visible_basic(const RenderObject& obj, const glm::mat4& viewproj)
@@ -639,9 +651,10 @@ void VulkanEngine::init_descriptor_layouts()
     // GLTF PIPELINE: descriptor for the shadow map sampler
     {
         DescriptorLayoutBuilder builder;
-        builder.add_binding(0, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
+        builder.add_binding(0, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER); //shadowmap
+        builder.add_binding(1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER); //sampler cube for irradiance map
 
-        _shadowDescriptorLayout = builder.build(_device, VK_SHADER_STAGE_FRAGMENT_BIT);
+        _lightingDescriptorLayout = builder.build(_device, VK_SHADER_STAGE_FRAGMENT_BIT);
     }
 
     //TONE MAPPING 
@@ -681,7 +694,7 @@ void VulkanEngine::init_descriptor_layouts()
     _mainDeletionQueue.push_function([&]()
     {
 		vkDestroyDescriptorSetLayout(_device, _perFrameDescriptorLayout, nullptr);
-        vkDestroyDescriptorSetLayout(_device, _shadowDescriptorLayout, nullptr);
+        vkDestroyDescriptorSetLayout(_device, _lightingDescriptorLayout, nullptr);
         vkDestroyDescriptorSetLayout(_device, _tonemapDescriptorLayout, nullptr);
         vkDestroyDescriptorSetLayout(_device, _skyboxDescriptorLayout, nullptr);
         vkDestroyDescriptorSetLayout(_device, _equiToCubeDescriptorLayout, nullptr);
@@ -692,7 +705,7 @@ void VulkanEngine::init_descriptor_layouts()
 //updates descriptor set bindings that dont change each frame (but may change on some events like window resize)
 void VulkanEngine::init_static_descriptor_sets()
 {
-    _shadowDescriptorSet = globalDescriptorAllocator.allocate(_device, _shadowDescriptorLayout);
+    _lightingDescriptorSet = globalDescriptorAllocator.allocate(_device, _lightingDescriptorLayout);
     {
         DescriptorWriter writer;
 
@@ -702,8 +715,15 @@ void VulkanEngine::init_static_descriptor_sets()
             _shadowSampler,
             VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_OPTIMAL,
             VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
+        
+        writer.write_image(
+            1,
+            _irradianceCubemap.imageView,
+            _defaultSamplerLinear,
+            VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+            VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
 
-        writer.update_set(_device, _shadowDescriptorSet);
+        writer.update_set(_device, _lightingDescriptorSet);
     }
 
     _tonemapDescriptorSet = globalDescriptorAllocator.allocate(_device, _tonemapDescriptorLayout);
@@ -1076,8 +1096,8 @@ void VulkanEngine::init_scene()
     // init model
     //std::string structurePath = { "assets/sponza/Sponza.gltf" };
     //std::string structurePath = { "assets/main_sponza/NewSponza_Main_glTF_003.gltf" };
-    std::string structurePath = { "assets/donutWithPBR.glb" };
-    //std::string structurePath = { "assets/ABeautifulGame.glb" };
+    //std::string structurePath = { "assets/MetalRoughSpheres.glb" };
+    std::string structurePath = { "assets/Lantern.glb" };
     auto structureFile = loadGltf(this, structurePath);
 
     assert(structureFile.has_value());
@@ -1086,7 +1106,7 @@ void VulkanEngine::init_scene()
 
     // init sky
 
-    auto skyboxImage = load_hdr_image(this, "assets/test_skybox2.hdr");
+    auto skyboxImage = load_hdr_image(this, "assets/test_skybox.hdr");
     assert(skyboxImage.has_value());
     _skyboxImage = *skyboxImage;
 
@@ -1369,7 +1389,7 @@ void VulkanEngine::draw_geometry(VkCommandBuffer cmd, VkDescriptorSet &perFrameD
                 vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,r.material->pipeline->layout, 0, 1,
                     &perFrameDescriptorSet, 0, nullptr);
                 vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, r.material->pipeline->layout, 1, 1,
-                    &_shadowDescriptorSet, 0, nullptr);
+                    &_lightingDescriptorSet, 0, nullptr);
                 
                 set_viewport_scissor(cmd, _drawExtent);
             }
