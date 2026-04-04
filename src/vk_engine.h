@@ -95,9 +95,11 @@ private:
 	void init_tonemap_pipeline();
 	void init_skybox_pipeline();
 	void init_equi_to_cube_pipeline();
+	void init_irradiance_pipeline();
 	void init_pipelines();
 
 	AllocatedImage create_cubemap_from_equi(const AllocatedImage& hdrEqui, uint32_t cubeSize);
+	AllocatedImage create_irradiance_map(const AllocatedImage& cubemap, uint32_t cubeSize);
 
 	void create_swapchain(uint32_t width, uint32_t height);
 	void create_render_targets(bool onWindowResize = false);
@@ -157,10 +159,12 @@ private:
 	AllocatedImage _tonemapImage;
 	AllocatedImage _skyboxImage;
 	AllocatedImage _environmentCubemap;
+	AllocatedImage _irradianceCubemap;
 	VkExtent2D _drawExtent;
 	float renderScale = 1.f;
 	uint32_t _shadowMapResolution = 1024;
 	uint32_t _environmentMapResolution = 1024;
+	uint32_t _irradianceMapResolution = 64;
 
 	// descriptors
 	DescriptorAllocatorGrowable globalDescriptorAllocator;
@@ -168,21 +172,25 @@ private:
 	VkDescriptorSet _skyboxDescriptorSet;
 	VkDescriptorSet _tonemapDescriptorSet;
 	VkDescriptorSet _equiToCubeDescriptorSet;
+	VkDescriptorSet _irradianceDescriptorSet;
 	VkDescriptorSetLayout _perFrameDescriptorLayout;
 	VkDescriptorSetLayout _shadowDescriptorLayout;
 	VkDescriptorSetLayout _skyboxDescriptorLayout;
 	VkDescriptorSetLayout _tonemapDescriptorLayout;
 	VkDescriptorSetLayout _equiToCubeDescriptorLayout;
+	VkDescriptorSetLayout _irradianceDescriptorLayout;
 
 	// pipelines and materials
 	VkPipeline _skyboxPipeline;	
 	VkPipeline _shadowPipeline;
 	VkPipeline _tonemapPipeline;
 	VkPipeline _equiToCubePipeline;
+	VkPipeline _irradiancePipeline;
 	VkPipelineLayout _skyboxPipelineLayout;
 	VkPipelineLayout _shadowPipelineLayout;
 	VkPipelineLayout _tonemapPipelineLayout;
 	VkPipelineLayout _equiToCubePipelineLayout;
+	VkPipelineLayout _irradiancePipelineLayout;
 
 	GLTFMetallic_Roughness _metalRoughMaterial;
 

@@ -270,7 +270,7 @@ void VulkanEngine::init_vulkan()
     _graphicsQueueFamily = vkbDevice.get_queue_index(vkb::QueueType::graphics).value();
 }
 
-//initalize descriptor allocators
+//initalize descriptor and vma allocators
 void VulkanEngine::init_allocators()
 {
     // init VMA memory allocator
@@ -292,6 +292,11 @@ void VulkanEngine::init_allocators()
     };
     globalDescriptorAllocator.init(_device, 10, sizes); //10 sets can be allocated  from this one
 
+    _mainDeletionQueue.push_function([&]()
+    {
+        globalDescriptorAllocator.destroy_pools(_device);
+    });
+
     //make our per frame descriptor allocators.
 	for (int i = 0; i < FRAME_OVERLAP; i++) 
     {
@@ -312,11 +317,6 @@ void VulkanEngine::init_allocators()
 			_frames[i]._frameDescriptors.destroy_pools(_device);
 		});
 	}
-
-    _mainDeletionQueue.push_function([&]()
-    {
-        globalDescriptorAllocator.destroy_pools(_device);
-    });
 }
 
 void VulkanEngine::init_swapchain()
@@ -429,7 +429,6 @@ void VulkanEngine::create_render_targets(bool onWindowResize)
     // render targets that dont need to be refreshed on window resize (resize_swapchain calls this function remember)
     if (onWindowResize) return;
 
-    // shadow depth image still lives here for now
     VkExtent3D shadowExtent = { _shadowMapResolution, _shadowMapResolution, 1 };
 
     _shadowDepthImage.imageFormat = VK_FORMAT_D32_SFLOAT;
@@ -669,6 +668,15 @@ void VulkanEngine::init_descriptor_layouts()
         _equiToCubeDescriptorLayout = builder.build(_device, VK_SHADER_STAGE_FRAGMENT_BIT);
     }
 
+    // IRRADIANCE
+    {
+        DescriptorLayoutBuilder builder;
+        builder.add_binding(0, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER); // ibl texture
+
+        _irradianceDescriptorLayout = builder.build(_device, VK_SHADER_STAGE_FRAGMENT_BIT);
+    }
+
+
     //cleanup
     _mainDeletionQueue.push_function([&]()
     {
@@ -677,6 +685,7 @@ void VulkanEngine::init_descriptor_layouts()
         vkDestroyDescriptorSetLayout(_device, _tonemapDescriptorLayout, nullptr);
         vkDestroyDescriptorSetLayout(_device, _skyboxDescriptorLayout, nullptr);
         vkDestroyDescriptorSetLayout(_device, _equiToCubeDescriptorLayout, nullptr);
+        vkDestroyDescriptorSetLayout(_device, _irradianceDescriptorLayout, nullptr);
     });
 }
 
@@ -732,6 +741,7 @@ void VulkanEngine::init_pipelines()
     init_tonemap_pipeline();
     init_skybox_pipeline();
     init_equi_to_cube_pipeline();
+    init_irradiance_pipeline();
 }
 
 void VulkanEngine::init_shadow_pipeline()
@@ -938,6 +948,60 @@ void VulkanEngine::init_equi_to_cube_pipeline()
     });
 }
 
+void VulkanEngine::init_irradiance_pipeline()
+{
+    VkShaderModule vert, frag;
+    if (!vkutil::load_shader_module("shaders/spirv/fullscreen.vert.spv", _device, &vert)) 
+    {
+        fmt::println("Error loading vertex shader");
+        return;
+    }
+    if (!vkutil::load_shader_module("shaders/spirv/irradiance.frag.spv", _device, &frag)) 
+    {
+        fmt::println("Error loading fragment shader");
+        return;
+    }
+
+    VkDescriptorSetLayout setLayouts[] = { _irradianceDescriptorLayout };
+
+    VkPushConstantRange pushRange{};
+    pushRange.offset = 0;
+    pushRange.size = sizeof(int32_t);
+    pushRange.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+
+
+    VkPipelineLayoutCreateInfo layoutInfo = vkinit::pipeline_layout_create_info();
+    layoutInfo.setLayoutCount = 1;
+    layoutInfo.pSetLayouts = setLayouts;
+    layoutInfo.pushConstantRangeCount = 1; 
+    layoutInfo.pPushConstantRanges = &pushRange;
+
+    VK_CHECK(vkCreatePipelineLayout(_device, &layoutInfo, nullptr, &_irradiancePipelineLayout));
+
+    PipelineBuilder pipelineBuilder;
+    pipelineBuilder.set_shaders(vert, frag);
+    pipelineBuilder.set_input_topology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
+    pipelineBuilder.set_polygon_mode(VK_POLYGON_MODE_FILL);
+    pipelineBuilder.set_cull_mode(VK_CULL_MODE_NONE, VK_FRONT_FACE_CLOCKWISE);
+    pipelineBuilder.set_multisampling_none(); 
+    pipelineBuilder.disable_depthtest();
+    pipelineBuilder.disable_blending();
+    pipelineBuilder.set_color_attachment_format(kEnvironmentMapFormat); 
+    pipelineBuilder._pipelineLayout = _irradiancePipelineLayout;
+
+    _irradiancePipeline = pipelineBuilder.build_pipeline(_device);
+
+    vkDestroyShaderModule(_device, vert, nullptr);
+    vkDestroyShaderModule(_device, frag, nullptr);
+
+    _mainDeletionQueue.push_function([=, this]()
+    {
+        vkDestroyPipeline(_device, _irradiancePipeline, nullptr);
+        vkDestroyPipelineLayout(_device, _irradiancePipelineLayout, nullptr);
+    });
+
+}
+
 void VulkanEngine::init_imgui()
 {
     fmt::print("Initializing imgui...\n");
@@ -1010,9 +1074,9 @@ void VulkanEngine::init_scene()
     mainCamera.yaw = 0;
 
     // init model
-    std::string structurePath = { "assets/sponza/Sponza.gltf" };
+    //std::string structurePath = { "assets/sponza/Sponza.gltf" };
     //std::string structurePath = { "assets/main_sponza/NewSponza_Main_glTF_003.gltf" };
-    //std::string structurePath = { "assets/Bistro.glb" };
+    std::string structurePath = { "assets/donutWithPBR.glb" };
     //std::string structurePath = { "assets/ABeautifulGame.glb" };
     auto structureFile = loadGltf(this, structurePath);
 
@@ -1029,10 +1093,13 @@ void VulkanEngine::init_scene()
     //convert equi to cubemap (requires init_pipelines() and init_descriptors())
     _environmentCubemap = create_cubemap_from_equi(_skyboxImage, _environmentMapResolution);
 
+    _irradianceCubemap = create_irradiance_map(_environmentCubemap, _irradianceMapResolution);
+
     _mainDeletionQueue.push_function([&]()
     {
         vkutil::destroy_image(_allocator, _device, _skyboxImage);
         vkutil::destroy_image(_allocator, _device, _environmentCubemap);
+        vkutil::destroy_image(_allocator, _device, _irradianceCubemap);
     });
 }
 
@@ -1118,6 +1185,86 @@ AllocatedImage VulkanEngine::create_cubemap_from_equi(const AllocatedImage &hdrE
     }
 
     return cubemap;
+}
+
+AllocatedImage VulkanEngine::create_irradiance_map(const AllocatedImage &cubemap, uint32_t cubeSize)
+{
+    // allocate a cubemap image
+    VmaAllocationCreateInfo allocInfo = {};
+    allocInfo.usage = VMA_MEMORY_USAGE_GPU_ONLY;
+    allocInfo.requiredFlags = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
+    
+    AllocatedImage irradianceCubemap;
+    irradianceCubemap.imageFormat = kEnvironmentMapFormat;
+    irradianceCubemap.imageExtent = VkExtent3D{ cubeSize, cubeSize, 1 };
+
+    VkImageUsageFlags usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+    VkImageCreateInfo cimg_info = vkinit::cubemap_create_info(kEnvironmentMapFormat, usage, cubeSize);
+    vmaCreateImage(_allocator, &cimg_info, &allocInfo, &irradianceCubemap.image, &irradianceCubemap.allocation, nullptr);
+
+    VkImageViewCreateInfo sview_info = vkinit::cubemap_view_create_info(irradianceCubemap.imageFormat, irradianceCubemap.image, VK_IMAGE_ASPECT_COLOR_BIT);
+    VK_CHECK(vkCreateImageView(_device, &sview_info, nullptr, &irradianceCubemap.imageView));
+
+    std::array<VkImageView, 6> faceViews{};
+    for (uint32_t face = 0; face < 6; ++face)
+    {
+        VkImageViewCreateInfo faceViewInfo = vkinit::imageview_create_info(
+            irradianceCubemap.imageFormat,
+            irradianceCubemap.image,
+            VK_IMAGE_ASPECT_COLOR_BIT,
+            VK_IMAGE_VIEW_TYPE_2D,
+            1,      // mipLevels
+            0,      // baseMipLevel
+            1,      // layerCount
+            face);  // baseArrayLayer
+        VK_CHECK(vkCreateImageView(_device, &faceViewInfo, nullptr, &faceViews[face]));
+    }
+
+    //bind ds
+    _irradianceDescriptorSet = globalDescriptorAllocator.allocate(_device, _irradianceDescriptorLayout);
+    {
+        DescriptorWriter writer;
+        writer.write_image(0, cubemap.imageView, _defaultSamplerLinear, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
+        writer.update_set(_device, _irradianceDescriptorSet);
+    }
+
+    //convolve
+    immediate_submit([&](VkCommandBuffer cmd)
+    {
+        vkutil::transition_image(cmd, irradianceCubemap.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_ASPECT_COLOR_BIT);
+
+        for (uint32_t face = 0; face < 6; ++face)
+        {
+            //attach that face image view
+            VkRenderingAttachmentInfo colorAttachment = vkinit::attachment_info(faceViews[face], nullptr, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+            VkRenderingInfo renderInfo = vkinit::rendering_info(VkExtent2D{ cubeSize, cubeSize }, &colorAttachment, nullptr);
+
+            //start
+            vkCmdBeginRendering(cmd, &renderInfo);
+
+            //vp / sc
+            set_viewport_scissor(cmd, {cubeSize, cubeSize});
+
+            //bind pipeline/desc/push
+            vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, _irradiancePipeline);
+            vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, _irradiancePipelineLayout, 0, 1, &_irradianceDescriptorSet, 0, nullptr);
+            vkCmdPushConstants(cmd, _irradiancePipelineLayout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(uint32_t), &face);
+
+            //draw face
+            vkCmdDraw(cmd, 3, 1, 0, 0);
+            vkCmdEndRendering(cmd);
+        }
+
+        vkutil::transition_image(cmd, irradianceCubemap.image, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_ASPECT_COLOR_BIT);
+    });
+
+    for (VkImageView v : faceViews)
+    {
+        vkDestroyImageView(_device, v, nullptr);
+    }
+
+    return irradianceCubemap;
+
 }
 
 void VulkanEngine::draw_scene(VkCommandBuffer cmd)
