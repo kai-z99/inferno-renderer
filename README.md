@@ -1,8 +1,8 @@
 ## Inferno Renderer
 
-WIP Vulkan renderer.
+<img width="1791" height="1413" alt="image" src="https://github.com/user-attachments/assets/e5a86bc4-d491-4f85-893e-cc98cab3802c" />
 
-- Current status: working on IBL
+WIP Vulkan renderer.
 
 ## Install (Linux)
 
