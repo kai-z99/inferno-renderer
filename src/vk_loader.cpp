@@ -1,8 +1,9 @@
 #include <vk_loader.h>
 
 #include "stb_image.h"
+#include "mikktspace.h"
 #include <iostream>
-#include <vk_loader.h>
+
 
 #include "vk_engine.h"
 #include "vk_initializers.h"
@@ -14,6 +15,117 @@
 #include <fastgltf/glm_element_traits.hpp>
 #include <fastgltf/parser.hpp>
 #include <fastgltf/tools.hpp>
+
+struct MikkPrimitiveData 
+{
+    std::vector<Vertex>* vertices;
+    const std::vector<uint32_t>* indices;
+    std::vector<glm::vec4>* tangents;
+    uint32_t startIndex;
+    uint32_t indexCount;
+};
+static int mikk_get_num_faces(const SMikkTSpaceContext* ctx) 
+{
+    auto* data = static_cast<MikkPrimitiveData*>(ctx->m_pUserData);
+    return static_cast<int>(data->indexCount / 3);
+}
+static int mikk_get_num_verts_of_face(const SMikkTSpaceContext*, const int) 
+{
+    return 3;
+}
+static uint32_t mikk_vertex_index(const MikkPrimitiveData& data, int face, int vert) 
+{
+    return (*data.indices)[data.startIndex + face * 3 + vert];
+}
+static void mikk_get_position(const SMikkTSpaceContext* ctx, float out[], const int face, const int vert) 
+{
+    auto* data = static_cast<MikkPrimitiveData*>(ctx->m_pUserData);
+
+    const Vertex& v = (*data->vertices)[mikk_vertex_index(*data, face, vert)];
+    out[0] = v.position.x; out[1] = v.position.y; out[2] = v.position.z;
+}
+static void mikk_get_normal(const SMikkTSpaceContext* ctx, float out[], const int face, const int vert) 
+{
+    auto* data = static_cast<MikkPrimitiveData*>(ctx->m_pUserData);
+    const Vertex& v = (*data->vertices)[mikk_vertex_index(*data, face, vert)];
+    out[0] = v.normal.x; out[1] = v.normal.y; out[2] = v.normal.z;
+}
+static void mikk_get_texcoord(const SMikkTSpaceContext* ctx, float out[], const int face, const int vert) 
+{
+    auto* data = static_cast<MikkPrimitiveData*>(ctx->m_pUserData);
+    const Vertex& v = (*data->vertices)[mikk_vertex_index(*data, face, vert)];
+    out[0] = v.uv_x; out[1] = v.uv_y;
+}
+static void mikk_set_tspace_basic(const SMikkTSpaceContext* ctx, const float tangent[], const float sign, const int face, const int vert) 
+{
+    auto* data = static_cast<MikkPrimitiveData*>(ctx->m_pUserData);
+    (*data->tangents)[face * 3 + vert] = glm::vec4(tangent[0], tangent[1], tangent[2], sign);
+}
+
+static bool generate_tangents_for_primitive(
+    std::vector<Vertex>& vertices,
+    const std::vector<uint32_t>& indices,
+    uint32_t startIndex,
+    uint32_t indexCount,
+    std::vector<glm::vec4>& tangents)
+{
+    MikkPrimitiveData data{
+        .vertices = &vertices,
+        .indices = &indices,
+        .tangents = &tangents,
+        .startIndex = startIndex,
+        .indexCount = indexCount
+    };
+    SMikkTSpaceInterface iface{};
+    iface.m_getNumFaces = mikk_get_num_faces;
+    iface.m_getNumVerticesOfFace = mikk_get_num_verts_of_face;
+    iface.m_getPosition = mikk_get_position;
+    iface.m_getNormal = mikk_get_normal;
+    iface.m_getTexCoord = mikk_get_texcoord;
+    iface.m_setTSpaceBasic = mikk_set_tspace_basic;
+    SMikkTSpaceContext ctx{};
+    ctx.m_pInterface = &iface;
+    ctx.m_pUserData = &data;
+    return genTangSpaceDefault(&ctx) != 0;
+}
+
+static void zero_tangents_for_primitive(std::vector<Vertex>& vertices, size_t firstVertex)
+{
+    for (size_t i = firstVertex; i < vertices.size(); i++)
+    {
+        vertices[i].tangent = glm::vec4(0.f);
+    }
+}
+
+static void deindex_primitive_with_tangents(
+    std::vector<Vertex>& vertices,
+    std::vector<uint32_t>& indices,
+    size_t initialVertex,
+    uint32_t startIndex,
+    uint32_t indexCount,
+    const std::vector<glm::vec4>& tangents)
+{
+    std::vector<Vertex> expandedVertices;
+    expandedVertices.reserve(indexCount);
+
+    for (uint32_t i = 0; i < indexCount; i++)
+    {
+        Vertex expanded = vertices[indices[startIndex + i]];
+        expanded.tangent = tangents[i];
+        expandedVertices.push_back(expanded);
+    }
+
+    vertices.resize(initialVertex);
+    indices.resize(startIndex);
+
+    const uint32_t newInitialVertex = static_cast<uint32_t>(vertices.size());
+    vertices.insert(vertices.end(), expandedVertices.begin(), expandedVertices.end());
+
+    for (uint32_t i = 0; i < indexCount; i++)
+    {
+        indices.push_back(newInitialVertex + i);
+    }
+}
 
 VkFilter extract_filter(fastgltf::Filter filter)
 {
@@ -261,6 +373,8 @@ std::optional<std::shared_ptr<LoadedGLTF>> loadGltf(VulkanEngine *engine, std::f
         sampl.magFilter = extract_filter(sampler.magFilter.value_or(fastgltf::Filter::Nearest));
         sampl.minFilter = extract_filter(sampler.minFilter.value_or(fastgltf::Filter::Nearest));
         sampl.mipmapMode= extract_mipmap_mode(sampler.minFilter.value_or(fastgltf::Filter::Nearest));
+        sampl.anisotropyEnable = VK_TRUE;
+        sampl.maxAnisotropy = 8.0f;
 
         VkSampler newSampler;
         vkCreateSampler(engine->device(), &sampl, nullptr, &newSampler);
@@ -349,7 +463,7 @@ std::optional<std::shared_ptr<LoadedGLTF>> loadGltf(VulkanEngine *engine, std::f
         materialResources.colorSampler = engine->default_sampler_linear();
         materialResources.metalRoughImage = engine->black_image();
         materialResources.metalRoughSampler = engine->default_sampler_linear();
-        materialResources.normalImage = engine->white_image();
+        materialResources.normalImage = engine->flat_normal_image();
         materialResources.normalSampler = engine->default_sampler_linear();
         materialResources.emissiveImage = engine->black_image();
         materialResources.emissiveSampler = engine->default_sampler_linear();
@@ -501,31 +615,13 @@ std::optional<std::shared_ptr<LoadedGLTF>> loadGltf(VulkanEngine *engine, std::f
                     });
             }
 
-            // load vertex tangents/bitangants
-            auto tangents = p.findAttribute("TANGENT");
-            if (tangents != p.attributes.end())
-            {
-                fastgltf::iterateAccessorWithIndex<glm::vec4>(gltf, gltf.accessors[tangents->second],
-                    [&](glm::vec4 tangent, size_t index)
-                    {
-                        vertices[initial_vtx + index].tangent = tangent;
-                    });
-            }
-            else
-            {
-                for (size_t i = initial_vtx; i < vertices.size(); i++)
-                {
-                    vertices[i].tangent = glm::vec4(0.f);
-                }
-            }
-
             // load UVs
             auto uv = p.findAttribute("TEXCOORD_0");
-            if (uv != p.attributes.end()) 
+            if (uv != p.attributes.end())
             {
 
                 fastgltf::iterateAccessorWithIndex<glm::vec2>(gltf, gltf.accessors[(*uv).second],
-                    [&](glm::vec2 v, size_t index) 
+                    [&](glm::vec2 v, size_t index)
                     {
                         vertices[initial_vtx + index].uv_x = v.x;
                         vertices[initial_vtx + index].uv_y = v.y;
@@ -534,14 +630,48 @@ std::optional<std::shared_ptr<LoadedGLTF>> loadGltf(VulkanEngine *engine, std::f
 
             // load vertex colors
             auto colors = p.findAttribute("COLOR_0");
-            if (colors != p.attributes.end()) 
+            if (colors != p.attributes.end())
             {
 
                 fastgltf::iterateAccessorWithIndex<glm::vec4>(gltf, gltf.accessors[(*colors).second],
-                    [&](glm::vec4 v, size_t index) 
+                    [&](glm::vec4 v, size_t index)
                     {
                         vertices[initial_vtx + index].color = v;
                     });
+            }
+
+            // load vertex tangents/bitangants
+            auto tangents = p.findAttribute("TANGENT");
+            const bool canGenerateTangents =
+                tangents == p.attributes.end() &&
+                normals != p.attributes.end() &&
+                uv != p.attributes.end() &&
+                (newSurface.count % 3) == 0;
+
+            if (tangents != p.attributes.end())
+            {
+                fastgltf::iterateAccessorWithIndex<glm::vec4>(gltf, gltf.accessors[tangents->second],
+                    [&](glm::vec4 tangent, size_t index)
+                    {
+                        vertices[initial_vtx + index].tangent = tangent;
+                    });
+            }
+            else if (!canGenerateTangents)
+            {
+                zero_tangents_for_primitive(vertices, initial_vtx);
+            }
+            else
+            {
+                std::vector<glm::vec4> generatedTangents(newSurface.count, glm::vec4(0.f));
+
+                if (generate_tangents_for_primitive(vertices, indices, newSurface.startIndex, newSurface.count, generatedTangents))
+                {
+                    deindex_primitive_with_tangents(vertices, indices, initial_vtx, newSurface.startIndex, newSurface.count, generatedTangents);
+                }
+                else
+                {
+                    zero_tangents_for_primitive(vertices, initial_vtx);
+                }
             }
             
             //If it has a material, we created it (as a MaterialInstance) already 

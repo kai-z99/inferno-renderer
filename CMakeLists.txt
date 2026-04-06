@@ -3,7 +3,7 @@
 #
 cmake_minimum_required (VERSION 3.21)
 
-project ("Inferno Renderer")
+project ("Inferno Renderer" LANGUAGES C CXX)
 
 
 find_package(Vulkan REQUIRED)

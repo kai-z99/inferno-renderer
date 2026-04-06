@@ -66,6 +66,7 @@ public:
 	GLTFMetallic_Roughness& material_system() { return _metalRoughMaterial; }
 	const AllocatedImage& white_image() const { return _whiteImage; }
 	const AllocatedImage& black_image() const { return _blackImage; }
+	const AllocatedImage& flat_normal_image() const { return _flatNormalImage; }
 	const AllocatedImage& error_checkerboard_image() const { return _errorCheckerboardImage; }
 	VkSampler default_sampler_linear() const { return _defaultSamplerLinear; }
 	
@@ -221,7 +222,7 @@ private:
 	// default resources
 	AllocatedImage _whiteImage;
 	AllocatedImage _blackImage;
-	AllocatedImage _greyImage;
+	AllocatedImage _flatNormalImage;
 	AllocatedImage _errorCheckerboardImage;
 	VkSampler _defaultSamplerLinear;
 	VkSampler _defaultSamplerNearest;

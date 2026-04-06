@@ -249,22 +249,27 @@ void VulkanEngine::init_vulkan()
     SDL_Vulkan_CreateSurface(_window, _instance, &_surface);
 
     // vulkan 1.3 features
-    VkPhysicalDeviceVulkan13Features features{.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES};
-    features.dynamicRendering = true;
-    features.synchronization2 = true;
+    VkPhysicalDeviceVulkan13Features features13{.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES};
+    features13.dynamicRendering = true;
+    features13.synchronization2 = true;
 
     // vulkan 1.2 features
     VkPhysicalDeviceVulkan12Features features12{.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES};
     features12.bufferDeviceAddress = true;
     features12.descriptorIndexing = true;
 
+    // vulkan 1.0 features
+    VkPhysicalDeviceFeatures features10{};
+    features10.samplerAnisotropy = VK_TRUE;
+
     // use vkbootstrap to select a gpu.
     // We want a gpu that can write to the SDL surface and supports vulkan 1.3 with the correct features
     vkb::PhysicalDeviceSelector selector{vkb_inst};
     vkb::PhysicalDevice physicalDevice = selector
                                              .set_minimum_version(1, 3)
-                                             .set_required_features_13(features)
+                                             .set_required_features(features10)
                                              .set_required_features_12(features12)
+                                             .set_required_features_13(features13)
                                              .set_surface(_surface)
                                              .select()
                                              .value();
@@ -585,12 +590,12 @@ void VulkanEngine::init_default_data()
     //testMeshes = loadGltfMeshes(this, "assets/basicmesh.glb").value();
 
     //textures
-	//3 default textures, white, grey, black. 1 pixel each
+	// default 1x1 textures
 	uint32_t white = glm::packUnorm4x8(glm::vec4(1, 1, 1, 1));
 	_whiteImage = vkutil::upload_image(*this, (void*)&white, VkExtent3D{ 1, 1, 1 }, VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_USAGE_SAMPLED_BIT);
 
-	uint32_t grey = glm::packUnorm4x8(glm::vec4(0.66f, 0.66f, 0.66f, 1));
-	_greyImage = vkutil::upload_image(*this, (void*)&grey, VkExtent3D{ 1, 1, 1 }, VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_USAGE_SAMPLED_BIT);
+	uint32_t flatNormal = glm::packUnorm4x8(glm::vec4(0.5f, 0.5f, 1.0f, 1.0f));
+	_flatNormalImage = vkutil::upload_image(*this, (void*)&flatNormal, VkExtent3D{ 1, 1, 1 }, VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_USAGE_SAMPLED_BIT);
 
 	uint32_t black = glm::packUnorm4x8(glm::vec4(0, 0, 0, 0.5));
 	_blackImage = vkutil::upload_image(*this, (void*)&black, VkExtent3D{ 1, 1, 1 }, VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_USAGE_SAMPLED_BIT);
@@ -622,12 +627,15 @@ void VulkanEngine::init_default_data()
     sampl.minLod = 0.0f;
     sampl.maxLod = VK_LOD_CLAMP_NONE;
     sampl.mipLodBias = 0.0f;
+    sampl.anisotropyEnable = VK_TRUE;
+    sampl.maxAnisotropy = 4.0f;
 	vkCreateSampler(_device, &sampl, nullptr, &_defaultSamplerLinear);
 
     sampl.addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER;
     sampl.addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER;
     sampl.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER;
     sampl.borderColor = VK_BORDER_COLOR_FLOAT_OPAQUE_WHITE;
+    sampl.anisotropyEnable = VK_FALSE;
     vkCreateSampler(_device, &sampl, nullptr, &_shadowSampler);
 
 	_mainDeletionQueue.push_function([&]()
@@ -637,7 +645,7 @@ void VulkanEngine::init_default_data()
 		vkDestroySampler(_device,_shadowSampler,nullptr);
 
 		vkutil::destroy_image(_allocator, _device, _whiteImage);
-		vkutil::destroy_image(_allocator, _device, _greyImage);
+		vkutil::destroy_image(_allocator, _device, _flatNormalImage);
 		vkutil::destroy_image(_allocator, _device, _blackImage);
 		vkutil::destroy_image(_allocator, _device, _errorCheckerboardImage);
 	});
