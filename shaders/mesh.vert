@@ -31,14 +31,15 @@ void main()
 {
 	Vertex v = PushConstants.vertexBuffer.vertices[gl_VertexIndex];
 	vec4 position = vec4(v.position, 1.0f);
+	mat3 normalMatrix = transpose(inverse(mat3(PushConstants.render_matrix)));
 
 	//pos
 	outFragPosWorld = PushConstants.render_matrix * position;
 	gl_Position 	= sceneData.viewproj * PushConstants.render_matrix * position;
 
 	//normal/tangent
-	outNormal 	   	= (PushConstants.render_matrix * vec4(v.normal, 0.0)).xyz;
-	outTangent.xyz 	= (PushConstants.render_matrix * vec4(v.tangent.xyz, 0.0)).xyz;
+	outNormal 	   	= normalMatrix * v.normal;
+	outTangent.xyz 	= normalMatrix * v.tangent.xyz;
 	outTangent.w 	= v.tangent.w;
 
 	//color

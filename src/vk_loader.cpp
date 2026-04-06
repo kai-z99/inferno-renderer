@@ -498,7 +498,7 @@ std::optional<std::shared_ptr<LoadedGLTF>> loadGltf(VulkanEngine *engine, std::f
             {
                 for (size_t i = initial_vtx; i < vertices.size(); i++)
                 {
-                    vertices[i].tangent = glm::vec4(1.f, 0.f, 0.f, 1.f);
+                    vertices[i].tangent = glm::vec4(0.f);
                 }
             }
 

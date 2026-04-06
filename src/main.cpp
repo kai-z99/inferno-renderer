@@ -14,6 +14,7 @@ int main(int argc, char* argv[])
 }
 
 
+//fix mip levels in prefilter shader (by genreating them)
 // IBL
 // ClearCoat
 // ScreenSpaceSubSurfaceScattering

@@ -10,7 +10,8 @@
 //set 1: lighting resources like shadowmap, cubemaps
 layout(set = 1, binding = 0) uniform sampler2D shadowMap;
 layout(set = 1, binding = 1) uniform samplerCube irradianceCubemap;
-
+layout(set = 1, binding = 2) uniform samplerCube prefilterCubemap;
+layout(set = 1, binding = 3) uniform sampler2D brdfLUT;
 
 //set 2: materials
 layout(set = 2, binding = 0) uniform GLTFMaterialData
@@ -39,12 +40,16 @@ void main()
 	vec3 lightDir = normalize(sceneData.sunlightDirection.xyz);
 	vec3 viewDir =  normalize(inFragPosWorld.xyz - sceneData.camPos.xyz);
 
-	vec3 T = normalize(inTangent.xyz);
 	vec3 N = normalize(inNormal);
-	vec3 B = normalize(cross(N, T) * inTangent.w);
-	mat3 TBN = mat3(T, B, N);
-	vec3 normalTangentSpace = texture(normalTex, inUV).xyz * 2.0 - 1.0;
-	vec3 normal = normalize(TBN * normalTangentSpace);
+	vec3 normal = N;
+	if (length(inTangent.xyz) > 0.0)
+	{
+		vec3 T = normalize(inTangent.xyz);
+		vec3 B = normalize(cross(N, T) * inTangent.w);
+		mat3 TBN = mat3(T, B, N);
+		vec3 normalTangentSpace = texture(normalTex, inUV).xyz * 2.0 - 1.0;
+		normal = normalize(TBN * normalTangentSpace);
+	}
 
 	vec3 albedo = texture(colorTex, inUV).rgb * materialData.colorFactors.rgb;
 	float metallic = texture(metalRoughTex, inUV).b * materialData.metal_rough_factors.x;
@@ -53,18 +58,26 @@ void main()
 	float shadow = ShadowEval_PCF(shadowMap, inFragPosWorld, sceneData.lightViewProj);
 	vec3 direct = shadow * DirLightEval_CookTorrance(lightCol, lightPower, lightDir, viewDir, normal, albedo, metallic, roughness);
 
-	// Diffuse IBL
-    vec3 F0 = mix(vec3(0.04), albedo, metallic);
-    float NdotV = max(dot(normal, -viewDir), 0.0);
-    vec3 F = FresnelSchlick(NdotV, F0);
-    vec3 kS = F;
-    vec3 kD = (vec3(1.0) - kS) * (1.0 - metallic);
+	vec3 V = normalize(sceneData.camPos.xyz - inFragPosWorld.xyz);
+	float NdotV = max(dot(normal, V), 0.0);
 
-    vec3 irradiance = texture(irradianceCubemap, normal).rgb;
-    vec3 diffuseIBL = kD * albedo * irradiance;
-    diffuseIBL *= sceneData.iblIntensity;
+	vec3 F0 = mix(vec3(0.04), albedo, metallic);
+	vec3 kS = FresnelSchlick(NdotV, F0);
+	vec3 kD = (vec3(1.0) - kS) * (1.0 - metallic);
 
-	outFragColor = vec4(diffuseIBL + direct, 1.0);
+	// diffuse IBL
+	vec3 irradiance = texture(irradianceCubemap, normal).rgb;
+	vec3 diffuseIBL = kD * albedo * irradiance;
+
+	// specular IBL
+	vec3 R = reflect(-V, normal);
+
+	vec3 prefilteredColor = textureLod(prefilterCubemap, R, roughness * sceneData.prefilterMaxLod).rgb;
+	vec2 envBRDF = texture(brdfLUT, vec2(NdotV, roughness)).rg;
+	vec3 specularIBL = prefilteredColor * (F0 * envBRDF.x + envBRDF.y);
+
+	vec3 ambient = (diffuseIBL + specularIBL) * sceneData.iblIntensity;
+	outFragColor = vec4(direct + ambient, 1.0);
 	//outFragColor = vec4(direct, 1.0);
 	//outFragColor = vec4(texture(shadowMap, inUV));
 	//outFragColor = vec4(albedo, 1.0);

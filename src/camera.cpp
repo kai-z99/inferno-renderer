@@ -3,6 +3,20 @@
 #include <glm/gtx/transform.hpp>
 #include "glm/gtx/quaternion.hpp"
 
+#include "cvars.h"
+
+static AutoCVar_Float cvarCameraSpeed(
+    "r.camera.speed",
+    "Internal render scale",
+    0.1,
+    FloatCVarOptions{
+        .minValue = 0.01,
+        .maxValue = 2.0,
+        .step = 0.01f,
+        .format = "%.2f",
+    },
+    CVarEditHint::Slider);
+
 glm::mat4 Camera::getViewMatrix()
 {
     //convert camaras position to a tranlation matrix
@@ -24,14 +38,16 @@ glm::mat4 Camera::getRotationMatrix()
 
 void Camera::processSDLEvent(SDL_Event &e)
 {
+	float speed = cvarCameraSpeed.GetFloat();
+
     if (e.type == SDL_KEYDOWN) 
     {
-        if (e.key.keysym.sym == SDLK_w) { velocity.z = -1; }
-        if (e.key.keysym.sym == SDLK_s) { velocity.z = 1; }
-        if (e.key.keysym.sym == SDLK_a) { velocity.x = -1; }
-        if (e.key.keysym.sym == SDLK_d) { velocity.x = 1; }
-        if (e.key.keysym.sym == SDLK_q) { velocity.y = 1;}
-        if (e.key.keysym.sym == SDLK_e) { velocity.y = -1;}
+        if (e.key.keysym.sym == SDLK_w) { velocity.z = -speed; }
+        if (e.key.keysym.sym == SDLK_s) { velocity.z = speed; }
+        if (e.key.keysym.sym == SDLK_a) { velocity.x = -speed; }
+        if (e.key.keysym.sym == SDLK_d) { velocity.x = speed; }
+        if (e.key.keysym.sym == SDLK_q) { velocity.y = speed;}
+        if (e.key.keysym.sym == SDLK_e) { velocity.y = -speed;}
     }
 
     if (e.type == SDL_KEYUP)

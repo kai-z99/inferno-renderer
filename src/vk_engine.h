@@ -52,6 +52,7 @@ public:
 
 	//im going to assume that equi -> hdr stays the same format.
 	static constexpr VkFormat kEnvironmentMapFormat = VK_FORMAT_R32G32B32A32_SFLOAT;
+	static constexpr VkFormat kLUTFormat = VK_FORMAT_R32G32_SFLOAT;
 
 	// lifecycle
 	void init();
@@ -96,10 +97,15 @@ private:
 	void init_skybox_pipeline();
 	void init_equi_to_cube_pipeline();
 	void init_irradiance_pipeline();
+	void init_prefilter_pipeline();
+	void init_brdf_lut_pipeline();
 	void init_pipelines();
 
 	AllocatedImage create_cubemap_from_equi(const AllocatedImage& hdrEqui, uint32_t cubeSize);
 	AllocatedImage create_irradiance_map(const AllocatedImage& cubemap, uint32_t cubeSize);
+	AllocatedImage create_prefilter_map(const AllocatedImage& cubemap, uint32_t cubeSize);
+	AllocatedImage create_brdf_LUT();
+
 
 	void create_swapchain(uint32_t width, uint32_t height);
 	void create_render_targets(bool onWindowResize = false);
@@ -160,11 +166,15 @@ private:
 	AllocatedImage _skyboxImage;
 	AllocatedImage _environmentCubemap;
 	AllocatedImage _irradianceCubemap;
+	AllocatedImage _prefilterCubemap;
+	AllocatedImage _brdfLUTImage;
 	VkExtent2D _drawExtent;
 	float renderScale = 1.f;
 	uint32_t _shadowMapResolution = 1024;
 	uint32_t _environmentMapResolution = 1024;
 	uint32_t _irradianceMapResolution = 64;
+	uint32_t _prefilterMapResolution = 256;
+	uint32_t _brdfLUTResolution = 512;
 
 	// descriptors
 	DescriptorAllocatorGrowable globalDescriptorAllocator;
@@ -173,12 +183,14 @@ private:
 	VkDescriptorSet _tonemapDescriptorSet;
 	VkDescriptorSet _equiToCubeDescriptorSet;
 	VkDescriptorSet _irradianceDescriptorSet;
+	VkDescriptorSet _prefilterDescriptorSet;
 	VkDescriptorSetLayout _perFrameDescriptorLayout;
 	VkDescriptorSetLayout _lightingDescriptorLayout;
 	VkDescriptorSetLayout _skyboxDescriptorLayout;
 	VkDescriptorSetLayout _tonemapDescriptorLayout;
 	VkDescriptorSetLayout _equiToCubeDescriptorLayout;
 	VkDescriptorSetLayout _irradianceDescriptorLayout;
+	VkDescriptorSetLayout _prefilterDescriptorLayout;
 
 	// pipelines and materials
 	VkPipeline _skyboxPipeline;	
@@ -186,11 +198,15 @@ private:
 	VkPipeline _tonemapPipeline;
 	VkPipeline _equiToCubePipeline;
 	VkPipeline _irradiancePipeline;
+	VkPipeline _prefilterPipeline;
+	VkPipeline _brdfLUTPipeline;
 	VkPipelineLayout _skyboxPipelineLayout;
 	VkPipelineLayout _shadowPipelineLayout;
 	VkPipelineLayout _tonemapPipelineLayout;
 	VkPipelineLayout _equiToCubePipelineLayout;
 	VkPipelineLayout _irradiancePipelineLayout;
+	VkPipelineLayout _prefilterPipelineLayout;
+	VkPipelineLayout _brdfLUTPipelineLayout;
 
 	GLTFMetallic_Roughness _metalRoughMaterial;
 

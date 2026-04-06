@@ -73,13 +73,20 @@ struct PerFrameData_GPU
     glm::mat4 proj;
     glm::mat4 viewproj;
     float iblIntensity;
+    float prefilterMaxLod;
     float _padding0;
     float _padding1;
-    float _padding2;
     glm::vec4 sunlightDirection; // w for sun power
     glm::vec4 sunlightColor;
     glm::vec4 camPos;
     glm::mat4 lightViewProj;
+};
+
+struct PrefilterPC
+{
+    uint32_t face;
+    float roughness;
+    uint32_t sourceRes;
 };
 
 enum class MaterialPass : uint8_t 
