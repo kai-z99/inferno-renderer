@@ -9,7 +9,7 @@ bool vkutil::load_shader_module(const char* filePath, VkDevice device, VkShaderM
 
     if (!file.is_open()) 
     {
-    	fmt::print("There is no file to open!\n");
+    	fmt::println("Failed to open shader file: {}", filePath);
         return false;
     }
 

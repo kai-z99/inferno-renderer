@@ -72,7 +72,10 @@ struct PerFrameData_GPU
     glm::mat4 view;
     glm::mat4 proj;
     glm::mat4 viewproj;
-    glm::vec4 ambientColor;
+    float iblIntensity;
+    float _padding0;
+    float _padding1;
+    float _padding2;
     glm::vec4 sunlightDirection; // w for sun power
     glm::vec4 sunlightColor;
     glm::vec4 camPos;

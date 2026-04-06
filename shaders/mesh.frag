@@ -62,6 +62,7 @@ void main()
 
     vec3 irradiance = texture(irradianceCubemap, normal).rgb;
     vec3 diffuseIBL = kD * albedo * irradiance;
+    diffuseIBL *= sceneData.iblIntensity;
 
 	outFragColor = vec4(diffuseIBL + direct, 1.0);
 	//outFragColor = vec4(direct, 1.0);

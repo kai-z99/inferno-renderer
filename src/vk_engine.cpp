@@ -1097,7 +1097,7 @@ void VulkanEngine::init_scene()
     //std::string structurePath = { "assets/sponza/Sponza.gltf" };
     //std::string structurePath = { "assets/main_sponza/NewSponza_Main_glTF_003.gltf" };
     //std::string structurePath = { "assets/MetalRoughSpheres.glb" };
-    std::string structurePath = { "assets/Lantern.glb" };
+    std::string structurePath = { "assets/donutWithPBR.glb" };
     auto structureFile = loadGltf(this, structurePath);
 
     assert(structureFile.has_value());
@@ -1106,7 +1106,7 @@ void VulkanEngine::init_scene()
 
     // init sky
 
-    auto skyboxImage = load_hdr_image(this, "assets/test_skybox.hdr");
+    auto skyboxImage = load_hdr_image(this, "assets/test_skybox2.hdr");
     assert(skyboxImage.has_value());
     _skyboxImage = *skyboxImage;
 
@@ -1658,7 +1658,10 @@ void VulkanEngine::update_scene()
     perFrameDataGPU.view = view;
     perFrameDataGPU.proj = projection;
     perFrameDataGPU.viewproj = projection * view;
-	perFrameDataGPU.ambientColor = glm::vec4(cvarAmbient.Get());
+	perFrameDataGPU.iblIntensity = cvarIblIntensity.GetFloat();
+	perFrameDataGPU._padding0 = 0.0f;
+	perFrameDataGPU._padding1 = 0.0f;
+	perFrameDataGPU._padding2 = 0.0f;
 	perFrameDataGPU.sunlightColor = glm::vec4(1.f);
 	perFrameDataGPU.sunlightDirection = glm::vec4(cvarSunDir.Get(), cvarSunPower.Get());
     perFrameDataGPU.camPos = glm::vec4(mainCamera.position, 1.0f);
