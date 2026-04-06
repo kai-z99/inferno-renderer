@@ -20,6 +20,7 @@ layout(set = 2, binding = 0) uniform GLTFMaterialData
 layout(set = 2, binding = 1) uniform sampler2D colorTex;
 layout(set = 2, binding = 2) uniform sampler2D metalRoughTex;
 layout(set = 2, binding = 3) uniform sampler2D normalTex;
+layout(set = 2, binding = 4) uniform sampler2D emissiveTex;
 
 layout (location = 0) out vec3 outNormal;
 layout (location = 1) out vec3 outColor;

@@ -609,6 +609,8 @@ void VulkanEngine::init_default_data()
 
 	VkSamplerCreateInfo sampl = {.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO};
 
+
+
 	sampl.magFilter = VK_FILTER_NEAREST;
 	sampl.minFilter = VK_FILTER_NEAREST;
 
@@ -616,6 +618,10 @@ void VulkanEngine::init_default_data()
 
 	sampl.magFilter = VK_FILTER_LINEAR;
 	sampl.minFilter = VK_FILTER_LINEAR;
+    sampl.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
+    sampl.minLod = 0.0f;
+    sampl.maxLod = VK_LOD_CLAMP_NONE;
+    sampl.mipLodBias = 0.0f;
 	vkCreateSampler(_device, &sampl, nullptr, &_defaultSamplerLinear);
 
     sampl.addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER;
@@ -1225,8 +1231,8 @@ void VulkanEngine::init_scene()
     // init model
     //std::string structurePath = { "assets/sponza/Sponza.gltf" };
     //std::string structurePath = { "assets/main_sponza/NewSponza_Main_glTF_003.gltf" };
-    std::string structurePath = { "assets/MetalRoughSpheres.glb" };
-    //std::string structurePath = { "assets/donutWithPBR.glb" };
+    //std::string structurePath = { "assets/MetalRoughSpheres.glb" };
+    std::string structurePath = { "assets/DamagedHelmet.glb" };
     auto structureFile = loadGltf(this, structurePath);
 
     assert(structureFile.has_value());
@@ -1235,7 +1241,7 @@ void VulkanEngine::init_scene()
 
     // init sky
 
-    auto skyboxImage = load_hdr_image(this, "assets/test_skybox.hdr");
+    auto skyboxImage = load_hdr_image(this, "assets/test_skybox4.hdr");
     assert(skyboxImage.has_value());
     _skyboxImage = *skyboxImage;
 
