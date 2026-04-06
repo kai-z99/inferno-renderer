@@ -49,18 +49,6 @@ static AutoCVar_Float cvarSunPower(
     },
     CVarEditHint::Slider);
 
-static AutoCVar_Float cvarAmbient(
-    "r.ambientLight",
-    "Internal render scale",
-    0.1,
-    FloatCVarOptions{
-        .minValue = 0.0,
-        .maxValue = 0.5,
-        .step = 0.01f,
-        .format = "%.2f",
-    },
-    CVarEditHint::Slider);
-
 static AutoCVar_Vec3 cvarSunDir(
     "r.sun.direction",
     "Sun light direction",
@@ -74,17 +62,6 @@ static AutoCVar_Vec3 cvarSunDir(
     CVarEditHint::Drag
 );
 
-static AutoCVar_Int cvarTonemapIndex(
-    "r.tonemapindex",
-    "Internal render scale",
-    0,
-    IntCVarOptions{
-        .minValue = 0,
-        .maxValue = 2,
-        .step = 1
-    },
-    CVarEditHint::Step);
-
 static AutoCVar_Float cvarIblIntensity(
     "r.ibl.intensity",
     "Internal render scale",
@@ -96,6 +73,17 @@ static AutoCVar_Float cvarIblIntensity(
         .format = "%.2f",
     },
     CVarEditHint::Slider);
+
+static AutoCVar_Int cvarTonemapIndex(
+    "r.tonemapindex",
+    "Internal render scale",
+    0,
+    IntCVarOptions{
+        .minValue = 0,
+        .maxValue = 2,
+        .step = 1
+    },
+    CVarEditHint::Step);
 
 
 //clip space test 
@@ -587,7 +575,6 @@ void VulkanEngine::init_default_data()
 {
     fmt::print("Initializing default data ...\n");
     // meshes
-    //testMeshes = loadGltfMeshes(this, "assets/basicmesh.glb").value();
 
     //textures
 	// default 1x1 textures
@@ -1238,9 +1225,10 @@ void VulkanEngine::init_scene()
 
     // init model
     //std::string structurePath = { "assets/sponza/Sponza.gltf" };
+    std::string structurePath = { "assets/scifi/SciFiHelmet.gltf" };
     //std::string structurePath = { "assets/main_sponza/NewSponza_Main_glTF_003.gltf" };
     //std::string structurePath = { "assets/MetalRoughSpheres.glb" };
-    std::string structurePath = { "assets/DamagedHelmet.glb" };
+     //std::string structurePath = { "assets/CommercialRefrigerator.glb" };
     auto structureFile = loadGltf(this, structurePath);
 
     assert(structureFile.has_value());
