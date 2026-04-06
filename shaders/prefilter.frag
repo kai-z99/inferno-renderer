@@ -44,6 +44,7 @@ void main()
     vec3 prefilteredColor = vec3(0.0);
     float totalWeight = 0.0;
     
+    
     for(uint i = 0u; i < SAMPLE_COUNT; ++i)
     {
         // generates a sample vector that's biased towards the preferred alignment direction (importance sampling).
@@ -54,22 +55,25 @@ void main()
         float NdotL = max(dot(N, L), 0.0);
         if(NdotL > 0.0)
         {
-            //fix this later
-            // sample from the environment's mip level based on roughness/pdf to reduce spots
-//            float D   = DistributionGGX(N, H, pc.roughness);
-//            float NdotH = max(dot(N, H), 0.0);
-//            float HdotV = max(dot(H, V), 0.0);
-//            float pdf = D * NdotH / (4.0 * HdotV) + 0.0001; 
-//
-//            float saTexel  = 4.0 * PI / (6.0 * pc.sourceRes * pc.sourceRes);
-//            float saSample = 1.0 / (float(SAMPLE_COUNT) * pdf + 0.0001);
-//                
-//            float mipLevel = pc.roughness == 0.0 ? 0.0 : 0.5 * log2(saSample / saTexel); 
-            
-            
-            //prefilteredColor += textureLod(environmentMap, L, mipLevel).rgb * NdotL;
+            float D   = DistributionGGX(N, H, pc.roughness);
+            float NdotH = max(dot(N, H), 0.0);
+            float HdotV = max(dot(H, V), 0.0001);
+            float pdf = D * NdotH / (4.0 * HdotV) + 0.0001;
 
-            prefilteredColor += texture(environmentMap, L).rgb * NdotL;
+            float sourceRes = float(pc.sourceRes);
+            //approx solid angle of one texel
+            float saTexel  = 4.0 * PI / (6.0 * sourceRes * sourceRes);
+            //approx solid angle of one ggx sample
+            float saSample = 1.0 / (float(SAMPLE_COUNT) * pdf + 0.0001);
+              
+            // if mip 0 texel area is saTexel, mip m has texal area approx= saTexel*4^m
+            //saTexel*4^m approx= saSample
+            //m = 0.5log2(saSample/saTexel)
+            float mipLevel = pc.roughness == 0.0 ? 0.0 : 0.5 * log2(saSample / saTexel);
+            float maxMip = float(textureQueryLevels(environmentMap) - 1);
+            mipLevel = clamp(mipLevel, 0.0, maxMip);
+
+            prefilteredColor += textureLod(environmentMap, L, mipLevel).rgb * NdotL;
             totalWeight      += NdotL;
         }
     }

@@ -1225,10 +1225,10 @@ void VulkanEngine::init_scene()
 
     // init model
     //std::string structurePath = { "assets/sponza/Sponza.gltf" };
-    std::string structurePath = { "assets/scifi/SciFiHelmet.gltf" };
+    //std::string structurePath = { "assets/scifi/SciFiHelmet.gltf" };
     //std::string structurePath = { "assets/main_sponza/NewSponza_Main_glTF_003.gltf" };
     //std::string structurePath = { "assets/MetalRoughSpheres.glb" };
-     //std::string structurePath = { "assets/CommercialRefrigerator.glb" };
+    std::string structurePath = { "assets/DamagedHelmet.glb" };
     auto structureFile = loadGltf(this, structurePath);
 
     assert(structureFile.has_value());
@@ -1263,6 +1263,7 @@ void VulkanEngine::init_scene()
 AllocatedImage VulkanEngine::create_cubemap_from_equi(const AllocatedImage &hdrEqui, uint32_t cubeSize)
 {
     assert(hdrEqui.imageFormat == kEnvironmentMapFormat);
+    const uint32_t mipCount = static_cast<uint32_t>(std::floor(std::log2(cubeSize))) + 1;
 
     // 1. Allocate cubemap image
 
@@ -1275,10 +1276,10 @@ AllocatedImage VulkanEngine::create_cubemap_from_equi(const AllocatedImage &hdrE
     cubemap.imageExtent = VkExtent3D{ cubeSize, cubeSize, 1 };
 
     VkImageUsageFlags usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
-    VkImageCreateInfo cimg_info = vkinit::cubemap_create_info(kEnvironmentMapFormat, usage, cubeSize);
+    VkImageCreateInfo cimg_info = vkinit::cubemap_create_info(kEnvironmentMapFormat, usage, cubeSize, mipCount);
     vmaCreateImage(_allocator, &cimg_info, &allocInfo, &cubemap.image, &cubemap.allocation, nullptr);
 
-    VkImageViewCreateInfo sview_info = vkinit::cubemap_view_create_info(cubemap.imageFormat, cubemap.image, VK_IMAGE_ASPECT_COLOR_BIT);
+    VkImageViewCreateInfo sview_info = vkinit::cubemap_view_create_info(cubemap.imageFormat, cubemap.image, VK_IMAGE_ASPECT_COLOR_BIT, mipCount);
     VK_CHECK(vkCreateImageView(_device, &sview_info, nullptr, &cubemap.imageView));
 
     // 2. Create views for each face
@@ -1333,7 +1334,9 @@ AllocatedImage VulkanEngine::create_cubemap_from_equi(const AllocatedImage &hdrE
             vkCmdEndRendering(cmd);
         }
 
-        vkutil::transition_image(cmd, cubemap.image, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_ASPECT_COLOR_BIT);
+        // We only rendered mip 0 so  build the rest of the cubemap mip chain from it.
+        vkutil::transition_image(cmd, cubemap.image, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_ASPECT_COLOR_BIT);
+        vkutil::generate_mipmaps(cmd, cubemap.image, VkExtent2D{ cubeSize, cubeSize }, 6);
     });
 
     for (VkImageView v : faceViews)

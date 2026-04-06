@@ -67,7 +67,7 @@ void vkutil::copy_image_to_image(VkCommandBuffer cmd, VkImage source, VkImage de
     vkCmdBlitImage2(cmd, &blitInfo);
 }
 
-void vkutil::generate_mipmaps(VkCommandBuffer cmd, VkImage image, VkExtent2D imageSize)
+void vkutil::generate_mipmaps(VkCommandBuffer cmd, VkImage image, VkExtent2D imageSize, uint32_t layerCount)
 {
     int mipLevels = int(std::floor(std::log2(std::max(imageSize.width, imageSize.height)))) + 1;
     for (int mip = 0; mip < mipLevels; mip++) 
@@ -91,6 +91,8 @@ void vkutil::generate_mipmaps(VkCommandBuffer cmd, VkImage image, VkExtent2D ima
         imageBarrier.subresourceRange = vkinit::image_subresource_range(aspectMask);
         imageBarrier.subresourceRange.levelCount = 1;
         imageBarrier.subresourceRange.baseMipLevel = mip;
+        imageBarrier.subresourceRange.baseArrayLayer = 0;
+        imageBarrier.subresourceRange.layerCount = layerCount;
         imageBarrier.image = image;
 
         VkDependencyInfo depInfo { .sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO, .pNext = nullptr };
@@ -113,12 +115,12 @@ void vkutil::generate_mipmaps(VkCommandBuffer cmd, VkImage image, VkExtent2D ima
 
             blitRegion.srcSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
             blitRegion.srcSubresource.baseArrayLayer = 0;
-            blitRegion.srcSubresource.layerCount = 1;
+            blitRegion.srcSubresource.layerCount = layerCount;
             blitRegion.srcSubresource.mipLevel = mip;
 
             blitRegion.dstSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
             blitRegion.dstSubresource.baseArrayLayer = 0;
-            blitRegion.dstSubresource.layerCount = 1;
+            blitRegion.dstSubresource.layerCount = layerCount;
             blitRegion.dstSubresource.mipLevel = mip + 1;
 
             VkBlitImageInfo2 blitInfo {.sType = VK_STRUCTURE_TYPE_BLIT_IMAGE_INFO_2, .pNext = nullptr};
