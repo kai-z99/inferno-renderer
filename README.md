@@ -2,7 +2,8 @@
 
 <img width="1791" height="1413" alt="image" src="https://github.com/user-attachments/assets/e5a86bc4-d491-4f85-893e-cc98cab3802c" />
 
-WIP Vulkan renderer.
+
+Inferno Renderer is a cross platform realtime renderer built with Vulkan, that supports the glTF 2.0 PBR standard.
 
 
 ## Linux
