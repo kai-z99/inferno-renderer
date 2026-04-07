@@ -14,11 +14,11 @@ int main(int argc, char* argv[])
 }
 
 
-//fix mip levels in prefilter shader (by genreating them)
-// IBL
-// ClearCoat
+
+// ClearCoat/Sheen
 // ScreenSpaceSubSurfaceScattering
 // optimze shadowpass culling
+// emissive simple
 // paralax map
 // cascade shadow map
 

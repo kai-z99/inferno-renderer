@@ -19,7 +19,7 @@ vec3 DirLightEval_CookTorrance(vec3 lightCol, float lightPower, vec3 lightDir, v
     //cook-torrence BRDF
     float NDF = DistributionGGX(normal, halfway, roughness);
     float G = GeometrySmith(normal, -viewDir, -lightDir, roughness);
-    vec3 F = FresnelSchlick(max(dot(halfway, -viewDir), 0.0), F0);
+    vec3 F = FresnelSchlick(max(dot(halfway, -viewDir), 0.0), F0); //roughness is handled by d and g.
     vec3 numerator = NDF * G * F;
     float denominator = 4.0 * max(dot(-viewDir, normal), 0.0) * max(dot(-lightDir, normal), 0.0) + 0.00001;
     vec3 fCookTorrence = numerator / denominator;

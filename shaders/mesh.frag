@@ -70,17 +70,18 @@ void main()
 	
 	// diffuse IBL
 	vec3 F0 = mix(vec3(0.04), albedo, metallic);
-	vec3 kS = FresnelSchlick(NdotV, F0);
-	vec3 kD = (vec3(1.0) - kS) * (1.0 - metallic);
+	vec3 diffuseColor = albedo * (1.0 - metallic);
 	vec3 irradiance = texture(irradianceCubemap, normal).rgb;
-	vec3 diffuseIBL = kD * albedo * irradiance; 
+	vec3 diffuseIBL = diffuseColor * irradiance; 
 	diffuseIBL *= ao;							//ao
 
 	// specular IBL
 	vec3 R = reflect(viewDir, normal);
 	vec3 prefilteredColor = textureLod(prefilterCubemap, R, roughness * sceneData.prefilterMaxLod).rgb;
-	vec2 envBRDF = texture(brdfLUT, vec2(NdotV, roughness)).rg;
-	vec3 specularIBL = prefilteredColor * (F0 * envBRDF.x + envBRDF.y);
+	vec2 envBRDF = texture(brdfLUT, vec2(NdotV, roughness)).rg; //split sum A and B
+	vec3 specularIBL = prefilteredColor * (F0 * envBRDF.x + envBRDF.y); //filament uses F0 not kS
+	vec3 energyCompensation = vec3(1.0) + F0 * (1.0 / max(envBRDF.x + envBRDF.y, 1e-4) - 1.0); //dfg.y = envBRDF.A + envBRDF.B
+	specularIBL *= energyCompensation;
 	specularIBL *= ComputeSpecularAO(NdotV, ao, roughness); //ao
 	specularIBL *= pow(min(1.0 + dot(R, normal), 1.0), 2.0); // ao correction from filament 
 
