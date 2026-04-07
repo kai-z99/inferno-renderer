@@ -1125,7 +1125,7 @@ void VulkanEngine::init_brdf_lut_pipeline()
     layoutInfo.pPushConstantRanges = nullptr;
 
     VK_CHECK(vkCreatePipelineLayout(_device, &layoutInfo, nullptr, &_brdfLUTPipelineLayout));
-
+            
     PipelineBuilder pipelineBuilder;
     pipelineBuilder.set_shaders(vert, frag);
     pipelineBuilder.set_input_topology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
@@ -1147,8 +1147,6 @@ void VulkanEngine::init_brdf_lut_pipeline()
         vkDestroyPipeline(_device, _brdfLUTPipeline, nullptr);
         vkDestroyPipelineLayout(_device, _brdfLUTPipelineLayout, nullptr);
     });
-
-
 
 }
 
@@ -1224,7 +1222,7 @@ void VulkanEngine::init_scene()
     mainCamera.yaw = 0;
 
     // init model
-    //std::string structurePath = { "assets/sponza/Sponza.gltf" };
+    //std::string structurePath = { "assets/wukong/scene.gltf" };
     //std::string structurePath = { "assets/scifi/SciFiHelmet.gltf" };
     //std::string structurePath = { "assets/main_sponza/NewSponza_Main_glTF_003.gltf" };
     //std::string structurePath = { "assets/MetalRoughSpheres.glb" };

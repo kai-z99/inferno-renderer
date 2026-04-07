@@ -357,7 +357,7 @@ std::optional<std::shared_ptr<LoadedGLTF>> loadGltf(VulkanEngine *engine, std::f
     // we use this descriptor pool for write_material
     std::vector<DescriptorAllocatorGrowable::PoolSizeRatio> sizes = 
     {   
-        { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 4 }, //albedo, metalrough, normal, emissive
+        { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 5 }, //albedo, metalrough, normal, emissive, ao
         { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 3 },          
         { VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1 } 
     }; //one for each mateiral usually
@@ -467,6 +467,8 @@ std::optional<std::shared_ptr<LoadedGLTF>> loadGltf(VulkanEngine *engine, std::f
         materialResources.normalSampler = engine->default_sampler_linear();
         materialResources.emissiveImage = engine->black_image();
         materialResources.emissiveSampler = engine->default_sampler_linear();
+        materialResources.aoImage = engine->white_image();
+        materialResources.aoSampler = engine->default_sampler_linear();
 
 
         // MaterialConstants we made earlier
@@ -533,6 +535,21 @@ std::optional<std::shared_ptr<LoadedGLTF>> loadGltf(VulkanEngine *engine, std::f
             if (tex.samplerIndex.has_value())
             {
                 materialResources.emissiveSampler = file.samplers[*tex.samplerIndex];
+            }
+        }
+
+        if (mat.occlusionTexture.has_value())
+        {
+            const auto texIndex = mat.occlusionTexture->textureIndex;
+            const auto& tex = gltf.textures[texIndex];
+
+            if (auto imageIndex = resolve_texture_image_index(tex); imageIndex.has_value())
+            {
+                materialResources.aoImage = get_cached_image(*imageIndex, VK_FORMAT_R8G8B8A8_UNORM);
+            }
+            if (tex.samplerIndex.has_value())
+            {
+                materialResources.aoSampler = file.samplers[*tex.samplerIndex];
             }
         }
 

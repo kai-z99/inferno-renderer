@@ -24,6 +24,7 @@ layout(set = 2, binding = 1) uniform sampler2D colorTex;
 layout(set = 2, binding = 2) uniform sampler2D metalRoughTex;
 layout(set = 2, binding = 3) uniform sampler2D normalTex;
 layout(set = 2, binding = 4) uniform sampler2D emissiveTex;
+layout(set = 2, binding = 5) uniform sampler2D aoTex;
 
 //in
 layout (location = 0) in vec3 inNormal;
@@ -56,6 +57,7 @@ void main()
 	float metallic = texture(metalRoughTex, inUV).b * materialData.metal_rough_factors.x;
 	float roughness = texture(metalRoughTex, inUV).g * materialData.metal_rough_factors.y;
 	vec3 emissive = texture(emissiveTex, inUV).rgb;
+	float ao = texture(aoTex, inUV).r;
 
 	// DIRECT LIGHT ----------------
 
@@ -71,13 +73,16 @@ void main()
 	vec3 kS = FresnelSchlick(NdotV, F0);
 	vec3 kD = (vec3(1.0) - kS) * (1.0 - metallic);
 	vec3 irradiance = texture(irradianceCubemap, normal).rgb;
-	vec3 diffuseIBL = kD * albedo * irradiance;
+	vec3 diffuseIBL = kD * albedo * irradiance; 
+	diffuseIBL *= ao;							//ao
 
 	// specular IBL
 	vec3 R = reflect(viewDir, normal);
 	vec3 prefilteredColor = textureLod(prefilterCubemap, R, roughness * sceneData.prefilterMaxLod).rgb;
 	vec2 envBRDF = texture(brdfLUT, vec2(NdotV, roughness)).rg;
 	vec3 specularIBL = prefilteredColor * (F0 * envBRDF.x + envBRDF.y);
+	specularIBL *= ComputeSpecularAO(NdotV, ao, roughness); //ao
+	specularIBL *= pow(min(1.0 + dot(R, normal), 1.0), 2.0); // ao correction from filament 
 
 	vec3 ambient = (diffuseIBL + specularIBL) * sceneData.iblIntensity;
 	
