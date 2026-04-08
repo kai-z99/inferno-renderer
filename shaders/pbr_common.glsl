@@ -1,3 +1,6 @@
+#ifndef PBR_COMMON_GLSL
+#define PBR_COMMON_GLSL
+
 float DistributionGGX(vec3 N, vec3 H, float roughness)
 {
     const float PI = 3.14159265359;
@@ -93,3 +96,5 @@ float ComputeSpecularAO(float NoV, float ao, float roughness)
 {
     return clamp(pow(NoV + ao, exp2(-16.0 * roughness - 1.0)) - 1.0 + ao, 0.0, 1.0);
 }
+
+#endif // PBR_COMMON_GLSL

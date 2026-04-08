@@ -1,7 +1,8 @@
 #version 450
 
 #extension GL_GOOGLE_include_directive : require
-#include "lighting.glsl"
+#include "lighting_direct.glsl"
+#include "lighting_indirect.glsl"
 #include "pcss.glsl"
 
 //set 0: per frame descriptor set bindings
@@ -38,56 +39,44 @@ layout (location = 0) out vec4 outFragColor;
 void main() 
 {
 	// GET DATA ---------------------
+	SurfaceData sd;
+	sd.P = inFragPosWorld.xyz;
+	sd.N = normalize(inNormal);
+	if (length(inTangent.xyz) > 0.0)
+	{
+		vec3 T = normalize(inTangent.xyz);
+		vec3 B = normalize(cross(sd.N, T) * inTangent.w);
+		mat3 TBN = mat3(T, B, sd.N);
+		vec3 normalTangentSpace = texture(normalTex, inUV).xyz * 2.0 - 1.0;
+		sd.N = normalize(TBN * normalTangentSpace);
+	}
+	sd.V = normalize(sceneData.camPos.xyz - inFragPosWorld.xyz);
+	sd.albedo =  texture(colorTex, inUV).rgb * materialData.colorFactors.rgb;
+	vec3 metalRough = texture(metalRoughTex, inUV).rgb;
+	sd.metallic = metalRough.b * materialData.metal_rough_factors.x;
+	sd.roughness = metalRough.g * materialData.metal_rough_factors.y;
+	sd.ao = texture(aoTex, inUV).r;
+	sd.emissive = texture(emissiveTex, inUV).xyz;
+	sd.F0 = mix(vec3(0.04), sd.albedo, sd.metallic);
+	sd.NdotV = max(dot(sd.N, sd.V), 0.0);
+	sd.R = reflect(-sd.V, sd.N);
 
 	vec3 lightCol = sceneData.sunlightColor.xyz;
 	float lightPower = sceneData.sunlightDirection.w;
 	vec3 lightDir = normalize(sceneData.sunlightDirection.xyz);
-	vec3 viewDir =  normalize(inFragPosWorld.xyz - sceneData.camPos.xyz);
-	vec3 N = normalize(inNormal);
-	vec3 normal = N;
-	if (length(inTangent.xyz) > 0.0)
-	{
-		vec3 T = normalize(inTangent.xyz);
-		vec3 B = normalize(cross(N, T) * inTangent.w);
-		mat3 TBN = mat3(T, B, N);
-		vec3 normalTangentSpace = texture(normalTex, inUV).xyz * 2.0 - 1.0;
-		normal = normalize(TBN * normalTangentSpace);
-	}
-	vec3 albedo = texture(colorTex, inUV).rgb * materialData.colorFactors.rgb;
-	float metallic = texture(metalRoughTex, inUV).b * materialData.metal_rough_factors.x;
-	float roughness = texture(metalRoughTex, inUV).g * materialData.metal_rough_factors.y;
-	vec3 emissive = texture(emissiveTex, inUV).rgb;
-	float ao = texture(aoTex, inUV).r;
 
 	// DIRECT LIGHT ----------------
 
 	float shadow = ShadowEval_PCF(shadowMap, inFragPosWorld, sceneData.lightViewProj);
-	vec3 direct = shadow * DirLightEval_CookTorrance(lightCol, lightPower, lightDir, viewDir, normal, albedo, metallic, roughness);
+	vec3 direct = shadow * EvalDirectLighting(sd, lightCol, lightPower, lightDir);
 
 	// INDIRECT LIGHT --------------
-
-	float NdotV = max(dot(normal, -viewDir), 0.0);
 	
 	// diffuse IBL
-	vec3 F0 = mix(vec3(0.04), albedo, metallic);
-	vec3 diffuseColor = albedo * (1.0 - metallic);
-	vec3 irradiance = texture(irradianceCubemap, normal).rgb;
-	vec3 diffuseIBL = diffuseColor * irradiance; 
-	diffuseIBL *= ao;							//ao
-
-	// specular IBL
-	vec3 R = reflect(viewDir, normal);
-	vec3 prefilteredColor = textureLod(prefilterCubemap, R, roughness * sceneData.prefilterMaxLod).rgb;
-	vec2 envBRDF = texture(brdfLUT, vec2(NdotV, roughness)).rg; //split sum A and B
-	vec3 specularIBL = prefilteredColor * (F0 * envBRDF.x + envBRDF.y); //filament uses F0 not kS
-	vec3 energyCompensation = vec3(1.0) + F0 * (1.0 / max(envBRDF.x + envBRDF.y, 1e-4) - 1.0); //dfg.y = envBRDF.A + envBRDF.B
-	specularIBL *= energyCompensation;
-	specularIBL *= ComputeSpecularAO(NdotV, ao, roughness); //ao
-	specularIBL *= pow(min(1.0 + dot(R, normal), 1.0), 2.0); // ao correction from filament 
-
-	vec3 ambient = (diffuseIBL + specularIBL) * sceneData.iblIntensity;
+	vec3 indirect = EvalIndirectLighting(sd, irradianceCubemap, prefilterCubemap, brdfLUT, sceneData.prefilterMaxLod );
+	indirect *= sceneData.iblIntensity;
 	
-	outFragColor = vec4(direct + ambient + emissive, 1.0);
+	outFragColor = vec4(direct + indirect + sd.emissive, 1.0);
 	//outFragColor = vec4(direct, 1.0);
 	//outFragColor = vec4(texture(shadowMap, inUV));
 	//outFragColor = vec4(albedo, 1.0);
