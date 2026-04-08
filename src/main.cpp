@@ -14,10 +14,9 @@ int main(int argc, char* argv[])
 }
 
 
-
+// apply specular correction factors to direct light
 // ClearCoat/Sheen
 // ScreenSpaceSubSurfaceScattering
-// optimze shadowpass culling
 // emissive simple
 // paralax map
 // cascade shadow map

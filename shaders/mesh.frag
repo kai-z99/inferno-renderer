@@ -54,7 +54,7 @@ void main()
 	sd.albedo =  texture(colorTex, inUV).rgb * materialData.colorFactors.rgb;
 	vec3 metalRough = texture(metalRoughTex, inUV).rgb;
 	sd.metallic = metalRough.b * materialData.metal_rough_factors.x;
-	sd.roughness = metalRough.g * materialData.metal_rough_factors.y;
+	sd.roughness = max(metalRough.g * materialData.metal_rough_factors.y, 0.045); //4.8.3.3 Roughness remapping and clamping;
 	sd.ao = texture(aoTex, inUV).r;
 	sd.emissive = texture(emissiveTex, inUV).xyz;
 	sd.F0 = mix(vec3(0.04), sd.albedo, sd.metallic);

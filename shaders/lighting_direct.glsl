@@ -2,30 +2,55 @@
 #include "pbr_common.glsl"
 #include "surface.glsl"
 
+const float PI = 3.14159265359;
 
-//Directions/normal are assumed to be normalized!
-vec3 EvalDirectLighting(SurfaceData sd, vec3 lightCol, float lightPower, vec3 lightDir)
+// ------------------------------------------------------------
+// Base lobes
+// ------------------------------------------------------------
+
+vec3 EvalBaseDiffuseDirect(SurfaceData sd)
 {
-    const float PI = 3.14159265359;
-    
-    vec3 halfway = normalize(sd.V + -lightDir); //micro facet normal
+    // 4.8.3.1 Base color remapping
+    vec3 diffuseColor = sd.albedo * (1.0 - sd.metallic);
+    return diffuseColor * (1.0 / PI);
+}
+
+vec3 EvalBaseSpecularDirect(
+    SurfaceData sd,
+    vec3 L)
+{
+    vec3 H = normalize(sd.V + L);
+
+    float D = DistributionGGX(sd.N, H, sd.roughness);
+    float G = GeometrySmith(sd.N, sd.V, L, sd.roughness);
+    vec3 F = FresnelSchlick(max(dot(H, sd.V), 0.0), sd.F0); //handles kS
+
+    vec3 numerator = D * G * F;
+    float denominator = 4.0 * max(dot(sd.N, sd.V), 0.0) * max(dot(sd.N, L), 0.0) + 0.00001;
+
+    return numerator / denominator;
+}
+
+// ------------------------------------------------------------
+// orchestrator
+// ------------------------------------------------------------
+vec3 EvalDirectLighting(
+    SurfaceData sd,
+    vec3 lightCol,
+    float lightPower,
+    vec3 lightDir)
+{
+    vec3 L = normalize(-lightDir);
+    float NdotL = max(dot(sd.N, L), 0.0);
+    if (NdotL <= 0.0) return vec3(0.0);
 
     vec3 radiance = lightCol * lightPower;
-    vec3 fLambert = sd.albedo / PI;
 
-    //cook-torrence BRDF
-    float NDF = DistributionGGX(sd.N, halfway, sd.roughness);
-    float G = GeometrySmith(sd.N, sd.V, -lightDir, sd.roughness);
-    vec3 F = FresnelSchlick(max(dot(halfway, sd.V), 0.0), sd.F0); //roughness is handled by d and g.
-    vec3 numerator = NDF * G * F;
-    float denominator = 4.0 * max(dot(sd.V, sd.N), 0.0) * max(dot(-lightDir, sd.N), 0.0) + 0.00001;
-    vec3 fCookTorrence = numerator / denominator;
+    vec3 direct = vec3(0.0);
 
-    vec3 kS = F;
-    vec3 kD = vec3(1.0) - kS;
-    kD *= 1.0 - sd.metallic; //kd theoretically either exists or is 0. (binary metal values)
+    // base layer
+    direct += EvalBaseDiffuseDirect(sd);
+    direct += EvalBaseSpecularDirect(sd, L);
 
-    float NdotL = max(dot(sd.N, -lightDir),0.0);
-
-    return (kD * fLambert + fCookTorrence) * radiance * NdotL;
+    return direct * radiance * NdotL;
 }
