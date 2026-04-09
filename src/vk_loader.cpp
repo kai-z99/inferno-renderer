@@ -347,7 +347,9 @@ std::optional<std::shared_ptr<LoadedGLTF>> loadGltf(VulkanEngine *engine, std::f
 
     fastgltf::Parser parser {
         fastgltf::Extensions::KHR_materials_transmission |
-        fastgltf::Extensions::KHR_materials_diffuse_transmission
+        fastgltf::Extensions::KHR_materials_diffuse_transmission |
+        fastgltf::Extensions::KHR_materials_unlit |
+        fastgltf::Extensions::KHR_lights_punctual
     };
 
     constexpr auto gltfOptions = fastgltf::Options::DontRequireValidAssetMember | fastgltf::Options::AllowDouble | fastgltf::Options::LoadExternalBuffers;
@@ -594,7 +596,7 @@ std::optional<std::shared_ptr<LoadedGLTF>> loadGltf(VulkanEngine *engine, std::f
             }
         }
 
-        //diffyse
+        //diffuse transmission
         if (mat.diffuseTransmission) 
         {
             const auto& dt = *mat.diffuseTransmission;
@@ -918,7 +920,7 @@ void LoadedGLTF::Draw(const glm::mat4 &topMatrix, DrawContext &ctx)
 {
     // create renderables from the scenenodes
     for (auto& n : topNodes) {
-        n->Draw(topMatrix * glm::scale(glm::mat4(1.0f), glm::vec3(30.0f)), ctx);
+        n->Draw(topMatrix /** glm::scale(glm::mat4(1.0f), glm::vec3(30.0f))*/, ctx);
     }
 }
 

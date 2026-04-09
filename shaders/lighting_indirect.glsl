@@ -65,6 +65,39 @@ vec3 EvalBaseSpecularIBL(
 }
 
 // ------------------------------------------------------------
+// Diffuse Transmission
+// ------------------------------------------------------------
+
+// vec3 EvalBaseDiffuseReflectIBL(
+//     SurfaceData sd,
+//     samplerCube irradianceMap)
+// {
+//     vec3 diffuseReflectColor =
+//         (1.0 - sd.diffuseTransmissionFactor) *
+//         sd.albedo *
+//         (1.0 - sd.metallic);
+
+//     vec3 irradiance = texture(irradianceMap, sd.N).rgb;
+//     return diffuseReflectColor * irradiance * sd.ao;
+// }
+
+// vec3 EvalBaseDiffuseTransmitIBL(
+//     SurfaceData sd,
+//     samplerCube irradianceMap)
+// {
+//     vec3 diffuseTransmitColor = 
+//         sd.diffuseTransmissionFactor * 
+//         sd.diffuseTransmissionColor * 
+//         (1.0 - sd.metallic);
+
+//     // thin-surface approximation:
+//     // transmitted diffuse comes from the opposite hemisphere
+//     vec3 transmittedIrradiance = texture(irradianceMap, sd.N).rgb;
+//     return diffuseTransmitColor * transmittedIrradiance;
+// }
+
+
+// ------------------------------------------------------------
 // Orchestrator
 // ------------------------------------------------------------
 
@@ -79,6 +112,8 @@ vec3 EvalIndirectLighting(
 
     // base layer
     indirect += EvalBaseDiffuseIBL(sd, irradianceMap);
+     //indirect += EvalBaseDiffuseReflectIBL(sd, irradianceMap);
+     //indirect += EvalBaseDiffuseTransmitIBL(sd, irradianceMap) ;
     indirect += EvalBaseSpecularIBL(sd, prefilterMap, brdfLUT, prefilterMaxLod);
 
     return indirect;

@@ -14,7 +14,8 @@ int main(int argc, char* argv[])
 }
 
 
-// apply specular correction factors to direct light
+// look at babylon's subsurface
+// Look at specular ao
 // ClearCoat/Sheen
 // ScreenSpaceSubSurfaceScattering
 // emissive simple

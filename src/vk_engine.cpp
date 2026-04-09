@@ -40,7 +40,7 @@ static AutoCVar_Float cvarRenderScale(
 static AutoCVar_Float cvarSunPower(
     "r.sunPower",
     "Internal render scale",
-    2.1,
+    0.0,
     FloatCVarOptions{
         .minValue = 0.0,
         .maxValue = 50.0,
@@ -1217,15 +1217,15 @@ void VulkanEngine::init_scene()
 {
     // init camera
     mainCamera.velocity = glm::vec3(0.f);
-	mainCamera.position = glm::vec3(0, 0, 5);
+	mainCamera.position = glm::vec3(0, 0, 0.5);
     mainCamera.pitch = 0;
     mainCamera.yaw = 0;
 
     // init model
-    std::string structurePath = { "assets/orange/MandarinOrange.gltf" };
-    //std::string structurePath = { "assets/scifi/SciFiHelmet.gltf" };
+    //std::string structurePath = { "assets/orange/MandarinOrange.gltf" };
+    std::string structurePath = { "assets/scifi/SciFiHelmet.gltf" };
     //std::string structurePath = { "assets/main_sponza/NewSponza_Main_glTF_003.gltf" };
-    //std::string structurePath = { "assets/MetalRoughSpheres.glb" };
+    //std::string structurePath = { "assets/MandarinOrange.glb" };
     //std::string structurePath = { "assets/DamagedHelmet.glb" };
     auto structureFile = loadGltf(this, structurePath);
 
@@ -1235,7 +1235,7 @@ void VulkanEngine::init_scene()
 
     // init sky
 
-    auto skyboxImage = load_hdr_image(this, "assets/test_skybox4.hdr");
+    auto skyboxImage = load_hdr_image(this, "assets/test_skybox6.hdr");
     assert(skyboxImage.has_value());
     _skyboxImage = *skyboxImage;
 

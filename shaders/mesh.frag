@@ -66,7 +66,8 @@ void main()
 
 	//KHR_materials_diffuse_transmission
 	sd.diffuseTransmissionColor = texture(diffuseTransmissionColorTex, inUV).rgb * materialData.diffuse_transmission_factors.xyz;
-	sd.diffuseTransmissionFactor = texture(diffuseTransmissionFactorTex, inUV).r * materialData.diffuse_transmission_factors.w;
+	sd.diffuseTransmissionFactor = texture(diffuseTransmissionFactorTex, inUV).a * materialData.diffuse_transmission_factors.w;
+	
 
 	// DIRECT LIGHT ----------------
 
@@ -85,7 +86,8 @@ void main()
 	
 	outFragColor = vec4(direct + indirect + sd.emissive, 1.0);
 
-	//outFragColor = vec4(texture(shadowMap, inUV));
+	//outFragColor = vec4(vec3(sd.diffuseTransmissionFactor), 1.0);
+	//outFragColor = vec4(vec3(sd.roughness), 1.0);
 	//outFragColor = vec4(albedo, 1.0);
 	//outFragColor = vec4(normalize(normal), 1.0);
 }

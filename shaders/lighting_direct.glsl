@@ -32,6 +32,30 @@ vec3 EvalBaseSpecularDirect(
 }
 
 // ------------------------------------------------------------
+// Diffuse transmission
+// ------------------------------------------------------------
+
+// vec3 EvalBaseDiffuseReflectDirect(SurfaceData sd)
+// {
+//     vec3 diffuseReflectColor =
+// 	    sd.albedo *
+//         (1.0 - sd.diffuseTransmissionFactor) *
+//         (1.0 - sd.metallic);
+
+//     return diffuseReflectColor * (1.0 / PI);
+// }
+
+// vec3 EvalBaseDiffuseTransmitDirect(SurfaceData sd)
+// {
+//     vec3 diffuseTransmitColor =
+// 	    sd.diffuseTransmissionColor *
+//         sd.diffuseTransmissionFactor *
+//         (1.0 - sd.metallic);
+
+//     return diffuseTransmitColor * (1.0 / PI);
+// }
+
+// ------------------------------------------------------------
 // orchestrator
 // ------------------------------------------------------------
 vec3 EvalDirectLighting(
@@ -41,16 +65,29 @@ vec3 EvalDirectLighting(
     vec3 lightDir)
 {
     vec3 L = normalize(-lightDir);
-    float NdotL = max(dot(sd.N, L), 0.0);
-    if (NdotL <= 0.0) return vec3(0.0);
+    float NdotL =      max(dot(sd.N, L), 0.0);
+    //float NdotLBack  = max(dot(-sd.N, L), 0.0);
 
     vec3 radiance = lightCol * lightPower;
 
     vec3 direct = vec3(0.0);
 
-    // base layer
-    direct += EvalBaseDiffuseDirect(sd);
-    direct += EvalBaseSpecularDirect(sd, L);
+    // direct += EvalBaseDiffuseDirect(sd);
+    // same hemisphere: diffuse reflection + specular reflection
+    if (NdotL > 0.0)
+    {
+        vec3 front = vec3(0.0);
+        front += EvalBaseDiffuseDirect(sd);
+        front += EvalBaseSpecularDirect(sd, L);
+        direct += front * radiance * NdotL;
+    }
 
-    return direct * radiance * NdotL;
+    // opposite hemisphere diffuse transmission only
+    // if (NdotLBack > 0.0)
+    // {
+    //     vec3 back = EvalBaseDiffuseTransmitDirect(sd);
+    //     direct += back * radiance * NdotLBack;
+    // }
+
+    return direct;
 }
