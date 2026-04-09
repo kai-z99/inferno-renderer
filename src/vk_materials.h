@@ -17,8 +17,9 @@ struct GLTFMetallic_Roughness
 	{
 		glm::vec4 colorFactors;
 		glm::vec4 metal_rough_factors;
+		glm::vec4 diffuse_transmission_factors; //color: xyz, factor: w
 		// padding, we need it anyway for uniform buffers
-		glm::vec4 extra[14];
+		glm::vec4 extra[13];
 	};
 
 	// for descriptor set
@@ -34,6 +35,11 @@ struct GLTFMetallic_Roughness
 		VkSampler emissiveSampler;
 		AllocatedImage aoImage;
 		VkSampler aoSampler;
+		AllocatedImage diffuseTransmissionFactorImage;
+		VkSampler diffuseTransmissionFactorSampler;
+		AllocatedImage diffuseTransmissionColorImage;
+		VkSampler diffuseTransmissionColorSampler;
+
 		VkBuffer dataBuffer;
 		uint32_t dataBufferOffset;
 	};

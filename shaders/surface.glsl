@@ -13,6 +13,10 @@ struct SurfaceData
     float ao;
     vec3 emissive;
 
+    //KHR_materials_diffuse_transmission
+    vec3 diffuseTransmissionColor;
+    float diffuseTransmissionFactor;
+
     vec3 F0;
     float NdotV;
     vec3 R; //reflect(-V, N)

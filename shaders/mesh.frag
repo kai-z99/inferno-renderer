@@ -19,6 +19,7 @@ layout(set = 2, binding = 0) uniform GLTFMaterialData
 {   
 	vec4 colorFactors;
 	vec4 metal_rough_factors;
+	//vec4 diffuse_transmission_factors //color on xyz, factor on w
 	
 } materialData;
 layout(set = 2, binding = 1) uniform sampler2D colorTex;
@@ -54,27 +55,31 @@ void main()
 	sd.albedo =  texture(colorTex, inUV).rgb * materialData.colorFactors.rgb;
 	vec3 metalRough = texture(metalRoughTex, inUV).rgb;
 	sd.metallic = metalRough.b * materialData.metal_rough_factors.x;
-	sd.roughness = max(metalRough.g * materialData.metal_rough_factors.y, 0.045); //4.8.3.3 Roughness remapping and clamping;
+	sd.roughness = max(metalRough.g * materialData.metal_rough_factors.y, 0.045); //4.8.3.3 Roughness remapping and clamping
 	sd.ao = texture(aoTex, inUV).r;
 	sd.emissive = texture(emissiveTex, inUV).xyz;
 	sd.F0 = mix(vec3(0.04), sd.albedo, sd.metallic);
 	sd.NdotV = max(dot(sd.N, sd.V), 0.0);
 	sd.R = reflect(-sd.V, sd.N);
 
+	//KHR_materials_diffuse_transmission
+	//sd.diffuseTransmissionColor = texture(diffuseTransmissionColorTex, inUV) * materialData.diffuse_transmission_factors.xyz;
+	//sd.diffuseTransmissionFactor = texture(diffuseTransmissionFactorTex, inUV) * mateiralData.diffuse_transmission_factors.w;
+
+	// DIRECT LIGHT ----------------
+
 	vec3 lightCol = sceneData.sunlightColor.xyz;
 	float lightPower = sceneData.sunlightDirection.w;
 	vec3 lightDir = normalize(sceneData.sunlightDirection.xyz);
 
-	// DIRECT LIGHT ----------------
+	vec3 direct = EvalDirectLighting(sd, lightCol, lightPower, lightDir);
+	direct *= ShadowEval_PCF(shadowMap, inFragPosWorld, sceneData.lightViewProj);
 
-	float shadow = ShadowEval_PCF(shadowMap, inFragPosWorld, sceneData.lightViewProj);
-	vec3 direct = shadow * EvalDirectLighting(sd, lightCol, lightPower, lightDir);
 
 	// INDIRECT LIGHT --------------
 	
-	// diffuse IBL
 	vec3 indirect = EvalIndirectLighting(sd, irradianceCubemap, prefilterCubemap, brdfLUT, sceneData.prefilterMaxLod );
-	indirect *= sceneData.iblIntensity;
+	indirect *= sceneData.iblIntensity; //artist tweak 
 	
 	outFragColor = vec4(direct + indirect + sd.emissive, 1.0);
 	//outFragColor = vec4(direct, 1.0);
