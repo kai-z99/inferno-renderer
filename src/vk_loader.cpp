@@ -461,12 +461,20 @@ std::optional<std::shared_ptr<LoadedGLTF>> loadGltf(VulkanEngine *engine, std::f
         constants.metal_rough_factors.y = mat.pbrData.roughnessFactor;
 
         //default values if diffuse transmission extension is not used.
-        constants.diffuse_transmission_factors.x = 0.0f;
-        constants.diffuse_transmission_factors.y = 0.0f;
-        constants.diffuse_transmission_factors.z = 0.0f;
+        constants.diffuse_transmission_factors.x = 1.0f;
+        constants.diffuse_transmission_factors.y = 1.0f;
+        constants.diffuse_transmission_factors.z = 1.0f;
         constants.diffuse_transmission_factors.w = 0.0f; 
         
         //write diffuse transmission factors here if applciable
+        if (mat.diffuseTransmission) 
+        {
+            const auto& dt = *mat.diffuseTransmission;
+            constants.diffuse_transmission_factors.x = dt.diffuseTransmissionColorFactor[0];
+            constants.diffuse_transmission_factors.y = dt.diffuseTransmissionColorFactor[1];
+            constants.diffuse_transmission_factors.z = dt.diffuseTransmissionColorFactor[2];
+            constants.diffuse_transmission_factors.w = dt.diffuseTransmissionFactor;
+        }
 
         // write material parameters to buffer (this is for the pointer in MaterialResources)
         // X
@@ -586,6 +594,41 @@ std::optional<std::shared_ptr<LoadedGLTF>> loadGltf(VulkanEngine *engine, std::f
             }
         }
 
+        //diffyse
+        if (mat.diffuseTransmission) 
+        {
+            const auto& dt = *mat.diffuseTransmission;
+
+            // factor texture r
+            if (dt.diffuseTransmissionTexture.has_value()) 
+            {
+                const auto texIndex = dt.diffuseTransmissionTexture->textureIndex;
+                const auto& tex = gltf.textures[texIndex];
+                if (auto imageIndex = resolve_texture_image_index(tex); imageIndex.has_value()) 
+                {
+                    materialResources.diffuseTransmissionFactorImage = get_cached_image(*imageIndex, VK_FORMAT_R8G8B8A8_UNORM);
+                }
+                if (tex.samplerIndex.has_value())
+                {
+                    materialResources.diffuseTransmissionFactorSampler = file.samplers[*tex.samplerIndex];
+                }
+            }
+
+            // color texture rgb
+            if (dt.diffuseTransmissionColorTexture.has_value()) 
+            {
+                const auto texIndex = dt.diffuseTransmissionColorTexture->textureIndex;
+                const auto& tex = gltf.textures[texIndex];
+                if (auto imageIndex = resolve_texture_image_index(tex); imageIndex.has_value()) 
+                {
+                    materialResources.diffuseTransmissionColorImage = get_cached_image(*imageIndex, VK_FORMAT_R8G8B8A8_SRGB);
+                }
+                if (tex.samplerIndex.has_value()) 
+                {
+                    materialResources.diffuseTransmissionColorSampler = file.samplers[*tex.samplerIndex];
+                }
+            }
+        }
 
         //------------------------------------------------------------------------------------------------
 
@@ -875,7 +918,7 @@ void LoadedGLTF::Draw(const glm::mat4 &topMatrix, DrawContext &ctx)
 {
     // create renderables from the scenenodes
     for (auto& n : topNodes) {
-        n->Draw(topMatrix, ctx);
+        n->Draw(topMatrix * glm::scale(glm::mat4(1.0f), glm::vec3(30.0f)), ctx);
     }
 }
 

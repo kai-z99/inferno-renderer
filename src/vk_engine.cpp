@@ -1222,8 +1222,8 @@ void VulkanEngine::init_scene()
     mainCamera.yaw = 0;
 
     // init model
-    //std::string structurePath = { "assets/orange/MandarinOrange.gltf" };
-    std::string structurePath = { "assets/scifi/SciFiHelmet.gltf" };
+    std::string structurePath = { "assets/orange/MandarinOrange.gltf" };
+    //std::string structurePath = { "assets/scifi/SciFiHelmet.gltf" };
     //std::string structurePath = { "assets/main_sponza/NewSponza_Main_glTF_003.gltf" };
     //std::string structurePath = { "assets/MetalRoughSpheres.glb" };
     //std::string structurePath = { "assets/DamagedHelmet.glb" };

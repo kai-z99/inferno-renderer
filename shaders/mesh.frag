@@ -19,7 +19,7 @@ layout(set = 2, binding = 0) uniform GLTFMaterialData
 {   
 	vec4 colorFactors;
 	vec4 metal_rough_factors;
-	//vec4 diffuse_transmission_factors //color on xyz, factor on w
+	vec4 diffuse_transmission_factors; //color on xyz, factor on w
 	
 } materialData;
 layout(set = 2, binding = 1) uniform sampler2D colorTex;
@@ -27,6 +27,8 @@ layout(set = 2, binding = 2) uniform sampler2D metalRoughTex;
 layout(set = 2, binding = 3) uniform sampler2D normalTex;
 layout(set = 2, binding = 4) uniform sampler2D emissiveTex;
 layout(set = 2, binding = 5) uniform sampler2D aoTex;
+layout(set = 2, binding = 6) uniform sampler2D diffuseTransmissionColorTex;
+layout(set = 2, binding = 7) uniform sampler2D diffuseTransmissionFactorTex;
 
 //in
 layout (location = 0) in vec3 inNormal;
@@ -63,8 +65,8 @@ void main()
 	sd.R = reflect(-sd.V, sd.N);
 
 	//KHR_materials_diffuse_transmission
-	//sd.diffuseTransmissionColor = texture(diffuseTransmissionColorTex, inUV) * materialData.diffuse_transmission_factors.xyz;
-	//sd.diffuseTransmissionFactor = texture(diffuseTransmissionFactorTex, inUV) * mateiralData.diffuse_transmission_factors.w;
+	sd.diffuseTransmissionColor = texture(diffuseTransmissionColorTex, inUV).rgb * materialData.diffuse_transmission_factors.xyz;
+	sd.diffuseTransmissionFactor = texture(diffuseTransmissionFactorTex, inUV).r * materialData.diffuse_transmission_factors.w;
 
 	// DIRECT LIGHT ----------------
 
@@ -82,7 +84,7 @@ void main()
 	indirect *= sceneData.iblIntensity; //artist tweak 
 	
 	outFragColor = vec4(direct + indirect + sd.emissive, 1.0);
-	//outFragColor = vec4(direct, 1.0);
+
 	//outFragColor = vec4(texture(shadowMap, inUV));
 	//outFragColor = vec4(albedo, 1.0);
 	//outFragColor = vec4(normalize(normal), 1.0);
