@@ -57,8 +57,8 @@ vec3 EvalBaseSpecularIBL(
 
     vec3 specularIBL = prefilteredColor * (sd.F0 * envBRDF.x + envBRDF.y);
 
-    specularIBL *= ComputeSpecularEnergyCompensation(sd.F0, envBRDF.x + envBRDF.y);
     specularIBL *= ComputeSpecularAO(sd.NdotV, sd.ao, sd.roughness);
+    specularIBL *= ComputeSpecularEnergyCompensation(sd.F0, envBRDF.x + envBRDF.y);
     specularIBL *= ComputeHorizonOcclusion(sd.R, sd.N);
 
     return specularIBL;
@@ -96,6 +96,32 @@ vec3 EvalBaseSpecularIBL(
 //     return diffuseTransmitColor * transmittedIrradiance;
 // }
 
+// ------------------------------------------------------------
+// Clearcoat
+// ------------------------------------------------------------
+
+vec3 EvalClearCoatIBL(
+    SurfaceData sd, 
+    samplerCube prefilterMap,
+    sampler2D brdfLUT,
+    float prefilterMaxLod,
+    inout vec3 baseDiffuse,
+    inout vec3 baseSpecular)
+{
+    float clearcoatNdotV = max(dot(sd.V, sd.clearcoatNormal),0.0);
+    vec3 clearcoatR = reflect(-sd.V, sd.clearcoatNormal);
+    float Fc = FresnelSchlick(clearcoatNdotV, vec3(0.04)).r * sd.clearcoatFactor;
+    float attenuation = 1.0 - Fc;
+
+    baseDiffuse *= attenuation;
+    baseSpecular *= attenuation;
+
+    float ao = ComputeSpecularAO(clearcoatNdotV, sd.ao, sd.clearcoatRoughness);
+
+    vec3 clearcoat = textureLod(prefilterMap, clearcoatR, sd.clearcoatRoughness * prefilterMaxLod).rgb * Fc * ao;
+
+    return clearcoat;
+}
 
 // ------------------------------------------------------------
 // Orchestrator
@@ -108,13 +134,9 @@ vec3 EvalIndirectLighting(
     sampler2D brdfLUT,
     float prefilterMaxLod)
 {
-    vec3 indirect = vec3(0.0);
+    vec3 baseDiffuse = EvalBaseDiffuseIBL(sd, irradianceMap);
+    vec3 baseSpecular = EvalBaseSpecularIBL(sd, prefilterMap, brdfLUT, prefilterMaxLod);
+    vec3 clearcoat = EvalClearCoatIBL(sd, prefilterMap, brdfLUT, prefilterMaxLod, baseDiffuse, baseSpecular);
 
-    // base layer
-    indirect += EvalBaseDiffuseIBL(sd, irradianceMap);
-     //indirect += EvalBaseDiffuseReflectIBL(sd, irradianceMap);
-     //indirect += EvalBaseDiffuseTransmitIBL(sd, irradianceMap) ;
-    indirect += EvalBaseSpecularIBL(sd, prefilterMap, brdfLUT, prefilterMaxLod);
-
-    return indirect;
+    return baseDiffuse + baseSpecular + clearcoat;
 }

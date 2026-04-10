@@ -17,6 +17,11 @@ struct SurfaceData
     vec3 diffuseTransmissionColor;
     float diffuseTransmissionFactor;
 
+    //KHR_materials_clearcoat
+    float clearcoatFactor;
+    float clearcoatRoughness;
+    vec3 clearcoatNormal;
+
     vec3 F0;
     float NdotV;
     vec3 R; //reflect(-V, N)

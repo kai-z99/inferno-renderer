@@ -346,8 +346,10 @@ std::optional<std::shared_ptr<LoadedGLTF>> loadGltf(VulkanEngine *engine, std::f
     LoadedGLTF& file = *scene.get();
 
     fastgltf::Parser parser {
+        fastgltf::Extensions::KHR_texture_transform |
         fastgltf::Extensions::KHR_materials_transmission |
         fastgltf::Extensions::KHR_materials_diffuse_transmission |
+        fastgltf::Extensions::KHR_materials_clearcoat |
         fastgltf::Extensions::KHR_materials_unlit |
         fastgltf::Extensions::KHR_lights_punctual
     };
@@ -380,7 +382,7 @@ std::optional<std::shared_ptr<LoadedGLTF>> loadGltf(VulkanEngine *engine, std::f
     // we use this descriptor pool for write_material
     std::vector<DescriptorAllocatorGrowable::PoolSizeRatio> sizes = 
     {   
-        { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 7 }, //albedo, metalrough, normal, emissive, ao, diffuseTransmissionColor, diffuseTransmissionFactor
+        { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 9 }, //albedo, metalrough, normal, emissive, ao, diffuseTransmissionColor, diffuseTransmissionFactor, clearcoat, clearcoatRoughness
         { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 3 },          
         { VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1 } 
     }; //one for each mateiral usually
@@ -478,6 +480,17 @@ std::optional<std::shared_ptr<LoadedGLTF>> loadGltf(VulkanEngine *engine, std::f
             constants.diffuse_transmission_factors.w = dt.diffuseTransmissionFactor;
         }
 
+        constants.clearcoat_factors.x = 0.0f;
+        constants.clearcoat_factors.y = 0.0f;
+        constants.clearcoat_factors.z = 0.0f;
+        constants.clearcoat_factors.w = 0.0f;
+        if (mat.clearcoat)
+        {
+            const auto& cc = *mat.clearcoat;
+            constants.clearcoat_factors.x = cc.clearcoatFactor;
+            constants.clearcoat_factors.y = cc.clearcoatRoughnessFactor;
+        }
+
         // write material parameters to buffer (this is for the pointer in MaterialResources)
         // X
         sceneMaterialConstants[data_index] = constants;
@@ -512,7 +525,10 @@ std::optional<std::shared_ptr<LoadedGLTF>> loadGltf(VulkanEngine *engine, std::f
         materialResources.diffuseTransmissionColorSampler = engine->default_sampler_linear();
         materialResources.diffuseTransmissionFactorImage = engine->white_image();
         materialResources.diffuseTransmissionFactorSampler = engine->default_sampler_linear();
-
+        materialResources.clearcoatImage = engine->white_image();
+        materialResources.clearcoatSampler = engine->default_sampler_linear();
+        materialResources.clearcoatRoughnessImage = engine->white_image();
+        materialResources.clearcoatRoughnessSampler = engine->default_sampler_linear();
 
         // MaterialConstants we made earlier
         materialResources.dataBuffer = file.materialDataBuffer.buffer;
@@ -628,6 +644,40 @@ std::optional<std::shared_ptr<LoadedGLTF>> loadGltf(VulkanEngine *engine, std::f
                 if (tex.samplerIndex.has_value()) 
                 {
                     materialResources.diffuseTransmissionColorSampler = file.samplers[*tex.samplerIndex];
+                }
+            }
+        }
+
+        // KHR_materials_clearcoat
+        if (mat.clearcoat)
+        {
+            const auto& cc = *mat.clearcoat;
+
+            if (cc.clearcoatTexture.has_value())
+            {
+                const auto texIndex = cc.clearcoatTexture->textureIndex;
+                const auto& tex = gltf.textures[texIndex];
+                if (auto imageIndex = resolve_texture_image_index(tex); imageIndex.has_value())
+                {
+                    materialResources.clearcoatImage = get_cached_image(*imageIndex, VK_FORMAT_R8G8B8A8_UNORM);
+                }
+                if (tex.samplerIndex.has_value())
+                {
+                    materialResources.clearcoatSampler = file.samplers[*tex.samplerIndex];
+                }
+            }
+
+            if (cc.clearcoatRoughnessTexture.has_value())
+            {
+                const auto texIndex = cc.clearcoatRoughnessTexture->textureIndex;
+                const auto& tex = gltf.textures[texIndex];
+                if (auto imageIndex = resolve_texture_image_index(tex); imageIndex.has_value())
+                {
+                    materialResources.clearcoatRoughnessImage = get_cached_image(*imageIndex, VK_FORMAT_R8G8B8A8_UNORM);
+                }
+                if (tex.samplerIndex.has_value())
+                {
+                    materialResources.clearcoatRoughnessSampler = file.samplers[*tex.samplerIndex];
                 }
             }
         }
@@ -920,7 +970,7 @@ void LoadedGLTF::Draw(const glm::mat4 &topMatrix, DrawContext &ctx)
 {
     // create renderables from the scenenodes
     for (auto& n : topNodes) {
-        n->Draw(topMatrix /** glm::scale(glm::mat4(1.0f), glm::vec3(30.0f))*/, ctx);
+        n->Draw(topMatrix * glm::scale(glm::mat4(1.0f), glm::vec3(10.0f)), ctx);
     }
 }
 

@@ -20,7 +20,8 @@ layout(set = 2, binding = 0) uniform GLTFMaterialData
 	vec4 colorFactors;
 	vec4 metal_rough_factors;
 	vec4 diffuse_transmission_factors; //color on xyz, factor on w
-	
+	vec4 clearcoat_factors;            // x: clearcoatFactor, y: clearcoatRoughnessFactor
+
 } materialData;
 layout(set = 2, binding = 1) uniform sampler2D colorTex;
 layout(set = 2, binding = 2) uniform sampler2D metalRoughTex;
@@ -29,6 +30,8 @@ layout(set = 2, binding = 4) uniform sampler2D emissiveTex;
 layout(set = 2, binding = 5) uniform sampler2D aoTex;
 layout(set = 2, binding = 6) uniform sampler2D diffuseTransmissionColorTex;
 layout(set = 2, binding = 7) uniform sampler2D diffuseTransmissionFactorTex;
+layout(set = 2, binding = 8) uniform sampler2D clearcoatTex;
+layout(set = 2, binding = 9) uniform sampler2D clearcoatRoughnessTex;
 
 //in
 layout (location = 0) in vec3 inNormal;
@@ -67,7 +70,11 @@ void main()
 	//KHR_materials_diffuse_transmission
 	sd.diffuseTransmissionColor = texture(diffuseTransmissionColorTex, inUV).rgb * materialData.diffuse_transmission_factors.xyz;
 	sd.diffuseTransmissionFactor = texture(diffuseTransmissionFactorTex, inUV).a * materialData.diffuse_transmission_factors.w;
-	
+
+	//KHR_materials_clearcoat
+	sd.clearcoatNormal = sd.N;
+	sd.clearcoatFactor = texture(clearcoatTex, inUV).r * materialData.clearcoat_factors.x;
+	sd.clearcoatRoughness = texture(clearcoatRoughnessTex, inUV).g * materialData.clearcoat_factors.y;
 
 	// DIRECT LIGHT ----------------
 
