@@ -174,7 +174,7 @@ private:
 	uint32_t _shadowMapResolution = 1024;
 	uint32_t _environmentMapResolution = 1024;
 	uint32_t _irradianceMapResolution = 64;
-	uint32_t _prefilterMapResolution = 256;
+	uint32_t _prefilterMapResolution = 512;
 	uint32_t _brdfLUTResolution = 512;
 
 	// descriptors

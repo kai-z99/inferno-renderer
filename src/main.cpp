@@ -18,6 +18,8 @@ int main(int argc, char* argv[])
 //2.  look at KHR texture transform
 //3. Do an orbit camera mode
 //4. Blur background?
+//5. Fix that sync error...
+//6. Look into specular pattern in prefilter
 
 
 
