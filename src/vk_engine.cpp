@@ -1225,8 +1225,8 @@ void VulkanEngine::init_scene()
     //std::string structurePath = { "assets/orange/MandarinOrange.gltf" };
     //std::string structurePath = { "assets/scifi/SciFiHelmet.gltf" };
     //std::string structurePath = { "assets/main_sponza/NewSponza_Main_glTF_003.gltf" };
-    std::string structurePath = { "assets/CompareClearcoat.glb" };
-    //std::string structurePath = { "assets/BoomBox.glb" };
+    std::string structurePath = { "assets/PotOfCoals.glb" };
+    //std::string structurePath = { "assets/DamagedHelmet.glb" };
     auto structureFile = loadGltf(this, structurePath);
 
     assert(structureFile.has_value());
@@ -1235,7 +1235,7 @@ void VulkanEngine::init_scene()
 
     // init sky
 
-    auto skyboxImage = load_hdr_image(this, "assets/test_skybox3.hdr");
+    auto skyboxImage = load_hdr_image(this, "assets/test_skybox6.hdr");
     assert(skyboxImage.has_value());
     _skyboxImage = *skyboxImage;
 

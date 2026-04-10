@@ -49,4 +49,26 @@ vec3 FresnelSchlickRoughness(float cosTheta, vec3 F0, float roughness)
     return F0 + (F90 - F0) * pow(clamp(1.0 - cosTheta, 0.0, 1.0), 5.0);
 }
 
+// FILAMENT
+float NormalFiltering(float perceptualRoughness, const vec3 worldNormal) {
+    const float specularAAVariance = 0.15; 
+    const float specularAAThreshold = 0.2;
+    // Kaplanyan 2016, "Stable specular highlights"
+    // Tokuyoshi 2017, "Error Reduction and Simplification for Shading Anti-Aliasing"
+    // Tokuyoshi and Kaplanyan 2019, "Improved Geometric Specular Antialiasing"
+    // This implementation is meant for deferred rendering in the original paper but
+    // we use it in forward rendering as well (as discussed in Tokuyoshi and Kaplanyan
+    // 2019). The main reason is that the forward version requires an expensive transform
+    // of the half vector by the tangent frame for every light. This is therefore an
+    // approximation but it works well enough for our needs and provides an improvement
+    // over our original implementation based on Vlachos 2015, "Advanced VR Rendering".
+    vec3 du = dFdx(worldNormal);
+    vec3 dv = dFdy(worldNormal);
+    float variance = specularAAVariance * (dot(du, du) + dot(dv, dv));
+    float alpha = perceptualRoughness * perceptualRoughness;
+    float kernelRoughness = min(2.0 * variance, specularAAThreshold);
+    float squareAlpha = clamp(alpha * alpha + kernelRoughness, 0.0, 1.0);
+    return sqrt(sqrt(squareAlpha));
+}
+
 #endif // PBR_COMMON_GLSL

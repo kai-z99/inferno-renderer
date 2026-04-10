@@ -76,6 +76,10 @@ void main()
 	sd.clearcoatFactor = texture(clearcoatTex, inUV).r * materialData.clearcoat_factors.x;
 	sd.clearcoatRoughness = texture(clearcoatRoughnessTex, inUV).g * materialData.clearcoat_factors.y;
 
+	//specular AA
+	sd.roughness = NormalFiltering(sd.roughness, sd.N);
+	sd.clearcoatRoughness = NormalFiltering(sd.clearcoatRoughness, sd.clearcoatNormal);
+
 	// DIRECT LIGHT ----------------
 
 	vec3 lightCol = sceneData.sunlightColor.xyz;
