@@ -1,8 +1,8 @@
 ## Inferno Renderer
 
-<img width="1140" height="964" alt="Screenshot from 2026-04-07 01-55-53" src="https://github.com/user-attachments/assets/09e072b8-bb7e-44df-b2a9-6bbabe114392" />
+<img width="1121" height="957" alt="image" src="https://github.com/user-attachments/assets/35d53fd0-7138-4243-ac21-4d45294cecec" />
 <img width="1423" height="1073" alt="Screenshot from 2026-04-07 01-57-54" src="https://github.com/user-attachments/assets/662d5ffa-8f65-4157-bb4c-8f39bd68f008" />
-<img width="1042" height="764" alt="Screenshot from 2026-04-10 00-22-36" src="https://github.com/user-attachments/assets/d383bcea-6da5-4d93-a872-f828085247a0" />
+<img width="1017" height="691" alt="image" src="https://github.com/user-attachments/assets/7b57f037-e52e-4511-a031-3434fb904f7e" />
 <img width="1630" height="525" alt="Screenshot from 2026-04-10 01-19-07" src="https://github.com/user-attachments/assets/6cffe16f-f782-44bb-82ef-e44108de5ece" />
 
 
