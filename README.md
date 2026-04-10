@@ -2,7 +2,8 @@
 
 <img width="1140" height="964" alt="Screenshot from 2026-04-07 01-55-53" src="https://github.com/user-attachments/assets/09e072b8-bb7e-44df-b2a9-6bbabe114392" />
 <img width="1423" height="1073" alt="Screenshot from 2026-04-07 01-57-54" src="https://github.com/user-attachments/assets/662d5ffa-8f65-4157-bb4c-8f39bd68f008" />
-<img width="1083" height="916" alt="image" src="https://github.com/user-attachments/assets/11cf5f08-0c3a-49c5-9ec6-8111928ccf55" />
+<img width="1042" height="764" alt="Screenshot from 2026-04-10 00-22-36" src="https://github.com/user-attachments/assets/d383bcea-6da5-4d93-a872-f828085247a0" />
+
 
 
 Inferno Renderer is a cross platform realtime renderer built with Vulkan, that supports the glTF 2.0 PBR standard.
