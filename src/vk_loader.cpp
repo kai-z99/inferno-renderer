@@ -10,6 +10,7 @@
 #include "vk_resources.h"
 #include "vk_upload.h"
 #include "vk_types.h"
+#include "cvars.h"
 #include <glm/gtx/quaternion.hpp>
 
 #include <fastgltf/glm_element_traits.hpp>
@@ -525,7 +526,7 @@ std::optional<std::shared_ptr<LoadedGLTF>> loadGltf(VulkanEngine *engine, std::f
         materialResources.diffuseTransmissionColorSampler = engine->default_sampler_linear();
         materialResources.diffuseTransmissionFactorImage = engine->white_image();
         materialResources.diffuseTransmissionFactorSampler = engine->default_sampler_linear();
-        materialResources.clearcoatImage = engine->white_image();
+        materialResources.clearcoatImage = engine->white_image(); //factor but no texture is valid, so def shouldnt be black or it will wipe
         materialResources.clearcoatSampler = engine->default_sampler_linear();
         materialResources.clearcoatRoughnessImage = engine->white_image();
         materialResources.clearcoatRoughnessSampler = engine->default_sampler_linear();
@@ -966,11 +967,24 @@ std::optional<AllocatedImage> load_hdr_image(VulkanEngine *engine, const std::fi
     return image;
 }
 
+static AutoCVar_Float cvarModelScale(
+    "r.modelScale",
+    "Internal render scale",
+    1.0,
+    FloatCVarOptions{
+        .minValue = 0.1,
+        .maxValue = 50.0,
+        .step = 0.01f,
+        .format = "%.2f",
+    },
+    CVarEditHint::Drag);
+
+
 void LoadedGLTF::Draw(const glm::mat4 &topMatrix, DrawContext &ctx)
 {
     // create renderables from the scenenodes
     for (auto& n : topNodes) {
-        n->Draw(topMatrix * glm::scale(glm::mat4(1.0f), glm::vec3(10.0f)), ctx);
+        n->Draw(topMatrix * glm::scale(glm::mat4(1.0f), glm::vec3(cvarModelScale.Get())) , ctx);
     }
 }
 

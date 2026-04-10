@@ -14,11 +14,16 @@ int main(int argc, char* argv[])
 }
 
 
+//1.) specular anti alising!!!
+//2.  look at KHR texture transform
+//3. Do an orbit camera mode
+//4. Blur background?
+
+
+
 // look at babylon's subsurface
-// Look at specular ao
-// ClearCoat/Sheen
-// ScreenSpaceSubSurfaceScattering
-// emissive simple
+// ClearCoat done/Sheen
+// KHR transmission
 // paralax map
 // cascade shadow map
 
