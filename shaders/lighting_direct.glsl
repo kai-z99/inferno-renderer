@@ -56,6 +56,31 @@ vec3 EvalBaseSpecularDirect(
 // }
 
 // ------------------------------------------------------------
+// Clearcoat
+// ------------------------------------------------------------
+
+vec3 EvalClearcoatDirect(
+    SurfaceData sd,
+    vec3 L,
+    inout vec3 baseDiffuse,
+    inout vec3 baseSpecular)
+{
+    vec3 H = normalize(sd.V + L);
+
+    float Dc = DistributionGGX(sd.clearcoatNormal, H, sd.clearcoatRoughness);
+    float Vc = V_Kelemen(max(dot(L, H), 0.0));
+    float Fc = FresnelSchlick(max(dot(H, sd.V), 0.0), vec3(0.04)).r * sd.clearcoatFactor;
+    float Frc = Dc * Vc * Fc;
+
+    baseDiffuse *= (1.0 - Fc);
+    baseSpecular *= (1.0 - Fc);
+
+    return vec3(Frc);
+}
+
+
+
+// ------------------------------------------------------------
 // orchestrator
 // ------------------------------------------------------------
 vec3 EvalDirectLighting(
@@ -72,14 +97,14 @@ vec3 EvalDirectLighting(
 
     vec3 direct = vec3(0.0);
 
-    // direct += EvalBaseDiffuseDirect(sd);
-    // same hemisphere: diffuse reflection + specular reflection
+    //for simplicity im gonna make an assumption that NdotL approx= ccNdotL so i dont have to do more branching logic for now
     if (NdotL > 0.0)
     {
-        vec3 front = vec3(0.0);
-        front += EvalBaseDiffuseDirect(sd);
-        front += EvalBaseSpecularDirect(sd, L);
-        direct += front * radiance * NdotL;
+        vec3 baseDiffuse = EvalBaseDiffuseDirect(sd);
+        vec3 baseSpecular = EvalBaseSpecularDirect(sd, L);
+        vec3 clearcoat = EvalClearcoatDirect(sd, L, baseDiffuse, baseSpecular);
+        vec3 total = baseDiffuse + baseSpecular + clearcoat;
+        direct += total * radiance * NdotL;
     }
 
     // opposite hemisphere diffuse transmission only

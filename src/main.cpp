@@ -14,13 +14,12 @@ int main(int argc, char* argv[])
 }
 
 
-//1.) specular anti alising!!!
+//1.) specular anti alising DONE
 //2.  look at KHR texture transform
 //3. Do an orbit camera mode
-//4. Blur background?
-//5. Fix that sync error...
+//4. Fix that sync error...
+//5. Blur background?
 //6. Look into specular pattern in prefilter
-
 
 
 // look at babylon's subsurface

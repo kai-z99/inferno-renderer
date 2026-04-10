@@ -1225,7 +1225,7 @@ void VulkanEngine::init_scene()
     //std::string structurePath = { "assets/orange/MandarinOrange.gltf" };
     //std::string structurePath = { "assets/scifi/SciFiHelmet.gltf" };
     //std::string structurePath = { "assets/main_sponza/NewSponza_Main_glTF_003.gltf" };
-    std::string structurePath = { "assets/PotOfCoals.glb" };
+    std::string structurePath = { "assets/CompareClearcoat.glb" };
     //std::string structurePath = { "assets/DamagedHelmet.glb" };
     auto structureFile = loadGltf(this, structurePath);
 

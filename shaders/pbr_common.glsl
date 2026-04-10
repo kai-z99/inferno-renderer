@@ -38,6 +38,11 @@ float GeometrySmith(vec3 N, vec3 V, vec3 L, float roughness)
     return ggx1 * ggx2;
 }
 
+float V_Kelemen(float LoH) 
+{
+    return 0.25 / (LoH * LoH);
+}
+
 vec3 FresnelSchlick(float cosTheta, vec3 F0)
 {
     return F0 + (1.0 - F0) * pow(clamp(1.0 - cosTheta, 0.0, 1.0), 5.0);
@@ -50,7 +55,8 @@ vec3 FresnelSchlickRoughness(float cosTheta, vec3 F0, float roughness)
 }
 
 // FILAMENT
-float NormalFiltering(float perceptualRoughness, const vec3 worldNormal) {
+float NormalFiltering(float perceptualRoughness, const vec3 worldNormal) 
+{
     const float specularAAVariance = 0.15; 
     const float specularAAThreshold = 0.2;
     // Kaplanyan 2016, "Stable specular highlights"

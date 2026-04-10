@@ -45,6 +45,8 @@ layout (location = 0) out vec4 outFragColor;
 void main() 
 {
 	// GET DATA ---------------------
+
+	//Generic PBR data
 	SurfaceData sd;
 	sd.P = inFragPosWorld.xyz;
 	sd.N = normalize(inNormal);
@@ -79,6 +81,7 @@ void main()
 	//specular AA
 	sd.roughness = NormalFiltering(sd.roughness, sd.N);
 	sd.clearcoatRoughness = NormalFiltering(sd.clearcoatRoughness, sd.clearcoatNormal);
+
 
 	// DIRECT LIGHT ----------------
 
