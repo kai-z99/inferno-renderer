@@ -465,12 +465,13 @@ std::optional<std::shared_ptr<LoadedGLTF>> loadGltf(VulkanEngine *engine, std::f
         constants.metal_rough_factors.x = mat.pbrData.metallicFactor;
         constants.metal_rough_factors.y = mat.pbrData.roughnessFactor;
 
+        //DIFFUSE TRANSMISSION -------------
         //default values if diffuse transmission extension is not used.
         constants.diffuse_transmission_factors.x = 1.0f;
         constants.diffuse_transmission_factors.y = 1.0f;
         constants.diffuse_transmission_factors.z = 1.0f;
         constants.diffuse_transmission_factors.w = 0.0f; 
-        
+
         //write diffuse transmission factors here if applciable
         if (mat.diffuseTransmission) 
         {
@@ -481,10 +482,12 @@ std::optional<std::shared_ptr<LoadedGLTF>> loadGltf(VulkanEngine *engine, std::f
             constants.diffuse_transmission_factors.w = dt.diffuseTransmissionFactor;
         }
 
+        //CLEARCOAT -------------
         constants.clearcoat_factors.x = 0.0f;
         constants.clearcoat_factors.y = 0.0f;
         constants.clearcoat_factors.z = 0.0f;
         constants.clearcoat_factors.w = 0.0f;
+
         if (mat.clearcoat)
         {
             const auto& cc = *mat.clearcoat;

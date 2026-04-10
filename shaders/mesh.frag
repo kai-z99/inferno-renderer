@@ -74,7 +74,7 @@ void main()
 	sd.diffuseTransmissionFactor = texture(diffuseTransmissionFactorTex, inUV).a * materialData.diffuse_transmission_factors.w;
 
 	//KHR_materials_clearcoat
-	sd.clearcoatNormal = sd.N;
+	sd.clearcoatNormal = sd.N; //simplifying assumption for now
 	sd.clearcoatFactor = texture(clearcoatTex, inUV).r * materialData.clearcoat_factors.x;
 	sd.clearcoatRoughness = texture(clearcoatRoughnessTex, inUV).g * materialData.clearcoat_factors.y;
 

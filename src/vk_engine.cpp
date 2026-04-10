@@ -39,7 +39,7 @@ static AutoCVar_Float cvarRenderScale(
 
 static AutoCVar_Float cvarSunPower(
     "r.sunPower",
-    "Internal render scale",
+    "sun power",
     0.0,
     FloatCVarOptions{
         .minValue = 0.0,
@@ -64,7 +64,7 @@ static AutoCVar_Vec3 cvarSunDir(
 
 static AutoCVar_Float cvarIblIntensity(
     "r.ibl.intensity",
-    "Internal render scale",
+    "ibl multiply strength",
     1.0,
     FloatCVarOptions{
         .minValue = 0.0,
@@ -76,7 +76,7 @@ static AutoCVar_Float cvarIblIntensity(
 
 static AutoCVar_Int cvarTonemapIndex(
     "r.tonemapindex",
-    "Internal render scale",
+    "0: aces, 1: reinhard, 2: gt7 approxx",
     0,
     IntCVarOptions{
         .minValue = 0,

@@ -5,9 +5,9 @@
 
 #include "cvars.h"
 
-static AutoCVar_Float cvarCameraSpeed(
-    "r.camera.speed",
-    "Internal render scale",
+static AutoCVar_Float cvarCameraFlySpeed(
+    "r.camera.flyspeed",
+    "how fast you can fly!",
     0.1,
     FloatCVarOptions{
         .minValue = 0.01,
@@ -17,14 +17,29 @@ static AutoCVar_Float cvarCameraSpeed(
     },
     CVarEditHint::Slider);
 
+static AutoCVar_Int cvarCameraControls(
+    "r.camera.controls",
+    "0: Orbit, 1: Fly",
+    0,
+    IntCVarOptions{
+        .minValue = 0,
+        .maxValue = 2,
+        .step = 1
+    },
+    CVarEditHint::Step);
+
 glm::mat4 Camera::getViewMatrix()
 {
-    //convert camaras position to a tranlation matrix
+    if (controls == CameraControls::Orbit)
+    {
+        glm::vec3 forward = glm::normalize(glm::vec3(getRotationMatrix() * glm::vec4(0.f, 0.f, -1.f, 0.f)));
+
+        position = target - forward * orbitDistance;
+        return glm::lookAt(position, target, glm::vec3(0.f, 1.f, 0.f));
+    }
+
     glm::mat4 cameraTranslation = glm::translate(glm::mat4(1.f), position);
-
     glm::mat4 cameraRotation = getRotationMatrix();
-
-    //inverse of camera's world transform is view transform
     return glm::inverse(cameraTranslation * cameraRotation);
 }
 
@@ -38,37 +53,71 @@ glm::mat4 Camera::getRotationMatrix()
 
 void Camera::processSDLEvent(SDL_Event &e)
 {
-	float speed = cvarCameraSpeed.GetFloat();
-
-    if (e.type == SDL_KEYDOWN) 
+    if (controls == CameraControls::Fly)
     {
-        if (e.key.keysym.sym == SDLK_w) { velocity.z = -speed; }
-        if (e.key.keysym.sym == SDLK_s) { velocity.z = speed; }
-        if (e.key.keysym.sym == SDLK_a) { velocity.x = -speed; }
-        if (e.key.keysym.sym == SDLK_d) { velocity.x = speed; }
-        if (e.key.keysym.sym == SDLK_q) { velocity.y = speed;}
-        if (e.key.keysym.sym == SDLK_e) { velocity.y = -speed;}
+        float speed = cvarCameraFlySpeed.GetFloat();
+
+        if (e.type == SDL_KEYDOWN) 
+        {
+            if (e.key.keysym.sym == SDLK_w) { velocity.z = -speed; }
+            if (e.key.keysym.sym == SDLK_s) { velocity.z = speed; }
+            if (e.key.keysym.sym == SDLK_a) { velocity.x = -speed; }
+            if (e.key.keysym.sym == SDLK_d) { velocity.x = speed; }
+            if (e.key.keysym.sym == SDLK_q) { velocity.y = speed;}
+            if (e.key.keysym.sym == SDLK_e) { velocity.y = -speed;}
+        }
+
+        if (e.type == SDL_KEYUP)
+        {
+            if (e.key.keysym.sym == SDLK_w) { velocity.z = 0; }
+            if (e.key.keysym.sym == SDLK_s) { velocity.z = 0; }
+            if (e.key.keysym.sym == SDLK_a) { velocity.x = 0; }
+            if (e.key.keysym.sym == SDLK_d) { velocity.x = 0; }
+            if (e.key.keysym.sym == SDLK_q) { velocity.y = 0;}
+            if (e.key.keysym.sym == SDLK_e) { velocity.y = 0;}
+        }
+
+        if (e.type == SDL_MOUSEMOTION) 
+        {
+            yaw += (float)e.motion.xrel / 400.f;
+            pitch -= (float)e.motion.yrel / 400.f;
+        }
+    }
+    else if (controls == CameraControls::Orbit)
+    {
+        if (e.type == SDL_MOUSEMOTION && (e.motion.state & SDL_BUTTON_LMASK))
+        {
+            yaw   += static_cast<float>(e.motion.xrel) / 400.f;
+            pitch -= static_cast<float>(e.motion.yrel) / 400.f;
+        }
+
+        if (e.type == SDL_MOUSEWHEEL)
+        {
+            orbitDistance -= static_cast<float>(e.wheel.y) * 0.5f;
+            orbitDistance = glm::clamp(orbitDistance, orbitMinDistance, orbitMaxDistance);
+        }
     }
 
-    if (e.type == SDL_KEYUP)
-    {
-        if (e.key.keysym.sym == SDLK_w) { velocity.z = 0; }
-        if (e.key.keysym.sym == SDLK_s) { velocity.z = 0; }
-        if (e.key.keysym.sym == SDLK_a) { velocity.x = 0; }
-        if (e.key.keysym.sym == SDLK_d) { velocity.x = 0; }
-        if (e.key.keysym.sym == SDLK_q) { velocity.y = 0;}
-        if (e.key.keysym.sym == SDLK_e) { velocity.y = 0;}
-    }
+    const float pitchLimit = glm::radians(89.0f);
+    pitch = glm::clamp(pitch, -pitchLimit, pitchLimit);
 
-    if (e.type == SDL_MOUSEMOTION) 
-    {
-        yaw += (float)e.motion.xrel / 400.f;
-        pitch -= (float)e.motion.yrel / 400.f;
-    }
+
 }
 
 void Camera::update()
 {
-    glm::mat4 cameraRotation = getRotationMatrix();
-    position += glm::vec3(cameraRotation * glm::vec4(velocity * 0.2f, 0.f));
+    controls = (CameraControls)cvarCameraControls.Get();
+
+    if (controls == CameraControls::Fly)
+    {
+        glm::mat4 cameraRotation = getRotationMatrix();
+        position += glm::vec3(cameraRotation * glm::vec4(velocity * 0.2f, 0.f));
+    }
+    else if (controls == CameraControls::Orbit)
+    {
+        glm::vec3 forward = glm::normalize(glm::vec3(getRotationMatrix() * glm::vec4(0.f, 0.f, -1.f, 0.f)));
+        position = target - forward * orbitDistance;
+    }
+
+    orbitDistance = glm::length(position - target);
 }

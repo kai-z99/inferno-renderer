@@ -16,10 +16,12 @@ int main(int argc, char* argv[])
 
 //1.) specular anti alising DONE
 //2.  look at KHR texture transform
-//3. Do an orbit camera mode
+//3. Do an orbit camera mode DONT
+//X. Live scene change (model and env)
 //4. Fix that sync error...
 //5. Blur background?
 //6. Look into specular pattern in prefilter
+//7 set up clearcoat normal
 
 
 // look at babylon's subsurface
