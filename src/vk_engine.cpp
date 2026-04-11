@@ -29,7 +29,7 @@
 static AutoCVar_String cvarModelPath(
     "r.modelPath",
     "Path to glTF/glb relative to working directory",
-    "assets/DamagedHelmet.glb",
+    "assets/IridescenceSuzanne.glb",
     StringCVarOptions{ .maxLength = 512 },
     CVarEditHint::TextBoxApply);
 
@@ -1235,7 +1235,7 @@ void VulkanEngine::init_scene()
 
     // init sky
 
-    auto skyboxImage = load_hdr_image(this, "assets/test_skybox6.hdr");
+    auto skyboxImage = load_hdr_image(this, "assets/test_skybox7.hdr");
     assert(skyboxImage.has_value());
     _skyboxImage = *skyboxImage;
 

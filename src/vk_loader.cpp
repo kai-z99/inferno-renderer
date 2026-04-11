@@ -402,6 +402,7 @@ std::optional<std::shared_ptr<LoadedGLTF>> loadGltf(VulkanEngine *engine, std::f
         fastgltf::Extensions::KHR_materials_transmission |
         fastgltf::Extensions::KHR_materials_diffuse_transmission |
         fastgltf::Extensions::KHR_materials_clearcoat |
+        fastgltf::Extensions::KHR_materials_iridescence |
         fastgltf::Extensions::KHR_materials_unlit |
         fastgltf::Extensions::KHR_lights_punctual
     };
@@ -434,7 +435,7 @@ std::optional<std::shared_ptr<LoadedGLTF>> loadGltf(VulkanEngine *engine, std::f
     // we use this descriptor pool for write_material
     std::vector<DescriptorAllocatorGrowable::PoolSizeRatio> sizes = 
     {   
-        { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 9 }, //albedo, metalrough, normal, emissive, ao, diffuseTransmissionColor, diffuseTransmissionFactor, clearcoat, clearcoatRoughness
+        { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 11 }, //albedo, metalrough, normal, emissive, ao, diffuseTransmissionColor, diffuseTransmissionFactor, clearcoat, clearcoatRoughness, iridescence, iridescenceThickness
         { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 3 },          
         { VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1 } 
     }; //one for each mateiral usually
@@ -546,6 +547,21 @@ std::optional<std::shared_ptr<LoadedGLTF>> loadGltf(VulkanEngine *engine, std::f
             constants.clearcoat_factors.y = cc.clearcoatRoughnessFactor;
         }
 
+        // IRIDESCENCE -------------
+        constants.iridescence_factors.x = 0.0f;
+        constants.iridescence_factors.y = 1.3f;
+        constants.iridescence_factors.z = 100.0f;
+        constants.iridescence_factors.w = 400.0f;
+
+        if (mat.iridescence)
+        {
+            const auto& ir = *mat.iridescence;
+            constants.iridescence_factors.x = ir.iridescenceFactor;
+            constants.iridescence_factors.y = ir.iridescenceIor;
+            constants.iridescence_factors.z = ir.iridescenceThicknessMinimum;
+            constants.iridescence_factors.w = ir.iridescenceThicknessMaximum;
+        }
+
         // write material parameters to buffer (this is for the pointer in MaterialResources)
         // X
         sceneMaterialConstants[data_index] = constants;
@@ -568,7 +584,7 @@ std::optional<std::shared_ptr<LoadedGLTF>> loadGltf(VulkanEngine *engine, std::f
         // default the material textures
         materialResources.colorImage = engine->white_image();
         materialResources.colorSampler = engine->default_sampler_linear();
-        materialResources.metalRoughImage = engine->black_image();
+        materialResources.metalRoughImage = engine->white_image();
         materialResources.metalRoughSampler = engine->default_sampler_linear();
         materialResources.normalImage = engine->flat_normal_image();
         materialResources.normalSampler = engine->default_sampler_linear();
@@ -584,6 +600,10 @@ std::optional<std::shared_ptr<LoadedGLTF>> loadGltf(VulkanEngine *engine, std::f
         materialResources.clearcoatSampler = engine->default_sampler_linear();
         materialResources.clearcoatRoughnessImage = engine->white_image();
         materialResources.clearcoatRoughnessSampler = engine->default_sampler_linear();
+        materialResources.iridescenceImage = engine->white_image();
+        materialResources.iridescenceSampler = engine->default_sampler_linear();
+        materialResources.iridescenceThicknessImage = engine->white_image(); // G=1 => thicknessMax when no texture
+        materialResources.iridescenceThicknessSampler = engine->default_sampler_linear();
 
         // MaterialConstants we made earlier
         materialResources.dataBuffer = file.materialDataBuffer.buffer;
@@ -733,6 +753,40 @@ std::optional<std::shared_ptr<LoadedGLTF>> loadGltf(VulkanEngine *engine, std::f
                 if (tex.samplerIndex.has_value())
                 {
                     materialResources.clearcoatRoughnessSampler = file.samplers[*tex.samplerIndex];
+                }
+            }
+        }
+
+        // KHR_materials_iridescence
+        if (mat.iridescence)
+        {
+            const auto& ir = *mat.iridescence;
+
+            if (ir.iridescenceTexture.has_value())
+            {
+                const auto texIndex = ir.iridescenceTexture->textureIndex;
+                const auto& tex = gltf.textures[texIndex];
+                if (auto imageIndex = resolve_texture_image_index(tex); imageIndex.has_value())
+                {
+                    materialResources.iridescenceImage = get_cached_image(*imageIndex, VK_FORMAT_R8G8B8A8_UNORM);
+                }
+                if (tex.samplerIndex.has_value())
+                {
+                    materialResources.iridescenceSampler = file.samplers[*tex.samplerIndex];
+                }
+            }
+
+            if (ir.iridescenceThicknessTexture.has_value())
+            {
+                const auto texIndex = ir.iridescenceThicknessTexture->textureIndex;
+                const auto& tex = gltf.textures[texIndex];
+                if (auto imageIndex = resolve_texture_image_index(tex); imageIndex.has_value())
+                {
+                    materialResources.iridescenceThicknessImage = get_cached_image(*imageIndex, VK_FORMAT_R8G8B8A8_UNORM);
+                }
+                if (tex.samplerIndex.has_value())
+                {
+                    materialResources.iridescenceThicknessSampler = file.samplers[*tex.samplerIndex];
                 }
             }
         }

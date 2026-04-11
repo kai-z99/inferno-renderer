@@ -55,7 +55,11 @@ vec3 EvalBaseSpecularIBL(
     //brdf integral split sum A and B
     vec2 envBRDF = texture(brdfLUT, vec2(sd.NdotV, sd.roughness)).rg;
 
-    vec3 specularIBL = prefilteredColor * (sd.F0 * envBRDF.x + envBRDF.y);
+    //vec3 Fr = FresnelSchlickRoughness(sd.NdotV, sd.F0, sd.roughness);
+    vec3 Fi = FresnelIridescence(1.0, sd.iridescenceIOR, sd.NdotV, sd.iridescenceThickness, sd.F0);
+    vec3 F = mix(sd.F0, Fi, sd.iridescenceFactor);
+
+    vec3 specularIBL = prefilteredColor * (F * envBRDF.x + envBRDF.y);
 
     specularIBL *= ComputeSpecularAO(sd.NdotV, sd.ao, sd.roughness);
     specularIBL *= ComputeSpecularEnergyCompensation(sd.F0, envBRDF.x + envBRDF.y);

@@ -21,6 +21,7 @@ layout(set = 2, binding = 0) uniform GLTFMaterialData
 	vec4 metal_rough_factors;
 	vec4 diffuse_transmission_factors; //color on xyz, factor on w
 	vec4 clearcoat_factors;            // x: clearcoatFactor, y: clearcoatRoughnessFactor
+	vec4 iridescence_factors;        // x: iridescenceFactor, y: iridescenceIor, z: thicknessMin(nm), w: thicknessMax(nm)
 
 } materialData;
 layout(set = 2, binding = 1) uniform sampler2D colorTex;
@@ -32,6 +33,8 @@ layout(set = 2, binding = 6) uniform sampler2D diffuseTransmissionColorTex;
 layout(set = 2, binding = 7) uniform sampler2D diffuseTransmissionFactorTex;
 layout(set = 2, binding = 8) uniform sampler2D clearcoatTex;
 layout(set = 2, binding = 9) uniform sampler2D clearcoatRoughnessTex;
+layout(set = 2, binding = 10) uniform sampler2D iridescenceTex;
+layout(set = 2, binding = 11) uniform sampler2D iridescenceThicknessTex;
 
 //set 3: render options
 #include "render_options.glsl"
@@ -81,8 +84,14 @@ void main()
 	sd.clearcoatFactor = texture(clearcoatTex, inUV).r * materialData.clearcoat_factors.x;
 	sd.clearcoatRoughness = texture(clearcoatRoughnessTex, inUV).g * materialData.clearcoat_factors.y;
 
+	//KHR_materials_iridescence
+    sd.iridescenceFactor = texture(iridescenceTex, inUV).r * materialData.iridescence_factors.x;
+    float thicknessT = texture(iridescenceThicknessTex, inUV).g;
+	sd.iridescenceThickness = mix(materialData.iridescence_factors.z, materialData.iridescence_factors.w, thicknessT);
+	sd.iridescenceIOR = materialData.iridescence_factors.y;
+
 	//specular AA
-	if (renderOptions.enableSpecularAA == 1)
+	if (renderOptions.enableSpecularAA == 1U)
 	{
 		sd.roughness = NormalFiltering(sd.roughness, sd.N);
 		sd.clearcoatRoughness = NormalFiltering(sd.clearcoatRoughness, sd.clearcoatNormal);

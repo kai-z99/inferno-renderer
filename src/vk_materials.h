@@ -19,8 +19,9 @@ struct GLTFMetallic_Roughness
 		glm::vec4 metal_rough_factors;
 		glm::vec4 diffuse_transmission_factors; //color: xyz, factor: w
 		glm::vec4 clearcoat_factors;            // x: clearcoatFactor, y: clearcoatRoughnessFactor
+		glm::vec4 iridescence_factors;          // x: factor, y: IOR, z: thicknessMin(nm), w: thicknessMax(nm)
 		// padding, we need it anyway for uniform buffers
-		glm::vec4 extra[12];
+		glm::vec4 extra[11];
 	};
 
 	// for descriptor set
@@ -44,6 +45,10 @@ struct GLTFMetallic_Roughness
 		VkSampler clearcoatSampler;
 		AllocatedImage clearcoatRoughnessImage;
 		VkSampler clearcoatRoughnessSampler;
+		AllocatedImage iridescenceImage;
+		VkSampler iridescenceSampler;
+		AllocatedImage iridescenceThicknessImage;
+		VkSampler iridescenceThicknessSampler;
 
 		VkBuffer dataBuffer;
 		uint32_t dataBufferOffset;

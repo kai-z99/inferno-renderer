@@ -22,6 +22,11 @@ struct SurfaceData
     float clearcoatRoughness;
     vec3 clearcoatNormal;
 
+    //KHR_materials_iridescence
+    float iridescenceFactor;
+    float iridescenceThickness;
+    float iridescenceIOR;
+
     vec3 F0;
     float NdotV;
     vec3 R; //reflect(-V, N)
