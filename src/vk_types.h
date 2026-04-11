@@ -79,9 +79,9 @@ struct PerFrameData_GPU
 struct RenderOptions_GPU
 {
     uint32_t enableSpecularAA;
+    uint32_t enableShadows;
     float iblIntensity;
     float prefilterMaxLod;
-    float _paddingRenderOptions0;
     glm::vec4 sunlightDirection; // w for sun power
     glm::vec4 sunlightColor;
 };

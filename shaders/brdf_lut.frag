@@ -51,9 +51,42 @@ vec2 IntegrateBRDF(float NdotV, float roughness)
     return vec2(A, B);
         
 }
+
+
+// float IntegrateCloth(float NoV, float roughness)
+// {
+//     vec3 V = vec3(sqrt(1.0 - NoV * NoV), 0.0, NoV);
+
+//     float sum = 0.0;
+//     const uint SAMPLE_COUNT = 1024u;
+
+//     for (uint i = 0u; i < SAMPLE_COUNT; ++i)
+//     {
+//         vec2 Xi = Hammersley(i, SAMPLE_COUNT);
+
+//         vec3 H = UniformSampleHemisphere(Xi); //should work...
+//         vec3 L = normalize(2.0 * dot(V, H) * H - V);
+
+//         float NoL = max(L.z, 0.0);
+//         float NoH = max(H.z, 0.0);
+//         float VoH = max(dot(V, H), 0.0);
+
+//         if (NoL > 0.0)
+//         {
+//             float vis = VisibilityAshikhmin(NoV, NoL, roughness);
+//             float D   = DistributionCharlie(NoH, roughness);
+
+//             sum += vis * D * NoL * VoH;
+//         }
+//     }
+
+//     return sum * (4.0 * 2.0 * PI / float(SAMPLE_COUNT));
+// }
+
 // ----------------------------------------------------------------------------
 void main() 
 {
     vec2 integratedBRDF = IntegrateBRDF(inUV.x, inUV.y);
     outColor = integratedBRDF;
+    //outColor = vec3(integratedBRDF, clothBRDF); 
 }

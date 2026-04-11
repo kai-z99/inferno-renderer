@@ -106,7 +106,7 @@ void main()
 	vec3 lightDir = normalize(renderOptions.sunlightDirection.xyz);
 
 	vec3 direct = EvalDirectLighting(sd, lightCol, lightPower, lightDir);
-	direct *= ShadowEval_PCF(shadowMap, inFragPosWorld, sceneData.lightViewProj);
+	if (renderOptions.enableShadows == 1) direct *= ShadowEval_PCF(shadowMap, inFragPosWorld, sceneData.lightViewProj);
 
 
 	// INDIRECT LIGHT --------------

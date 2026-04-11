@@ -127,6 +127,38 @@ vec3 EvalClearCoatIBL(
     return clearcoat;
 }
 
+
+// ------------------------------------------------------------
+// Sheen
+// ------------------------------------------------------------
+
+
+// float Max3(vec3 v)
+// {
+//     return max(max(v.r, v.g), v.b);
+// }
+
+// vec3 EvalSheenIBL(
+//     SurfaceData sd,
+//     samplerCube prefilterMap,
+//     sampler2D brdfLUT,
+//     float prefilterMaxLod)
+// {
+//     vec3 prefilteredColor =
+//         textureLod(prefilterMap, sd.R, sd.sheenRoughness * prefilterMaxLod).rgb;
+
+//     float sheenDG = texture(brdfLUT, vec2(sd.NdotV, sd.sheenRoughness)).b;;
+
+//
+//     vec3 sheenIBL = prefilteredColor * sd.sheenColor * sheenDG;
+
+       //maybe?
+//     sheenIBL *= ComputeSpecularAO(sd.NdotV, sd.ao, sd.sheenRoughness);
+//     sheenIBL *= ComputeHorizonOcclusion(sd.R, sd.N);
+
+//     return sheenIBL;
+// }
+
 // ------------------------------------------------------------
 // Orchestrator
 // ------------------------------------------------------------
@@ -144,3 +176,25 @@ vec3 EvalIndirectLighting(
 
     return baseDiffuse + baseSpecular + clearcoat;
 }
+
+
+// vec3 EvalIndirectLighting(
+//     SurfaceData sd,
+//     samplerCube irradianceMap,
+//     samplerCube prefilterMap,
+//     sampler2D brdfLUT,
+//     float prefilterMaxLod)
+// {
+//     vec3 baseDiffuse  = EvalBaseDiffuseIBL(sd, irradianceMap);
+//     vec3 baseSpecular = EvalBaseSpecularIBL(sd, prefilterMap, brdfLUT, prefilterMaxLod);
+
+//     float sheenDFG = SampleSheenDFG(sd, brdfLUT);
+//     float sheenScale = 1.0 - Max3(sd.sheenColor) * sheenDFG;
+//     sheenScale = clamp(sheenScale, 0.0, 1.0);
+
+//     vec3 sheenIndirect = EvalSheenIBL(sd, prefilterMap, brdfLUT, prefilterMaxLod);
+
+//     vec3 baseIndirect = (baseDiffuse + baseSpecular) * sheenScale;
+
+//     return baseIndirect + sheenIndirect;
+// }

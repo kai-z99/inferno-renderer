@@ -687,7 +687,7 @@ void CVarSystemImpl::DrawImguiEditor()
 		addToEditList(GetCVarArray<std::string>()->cvars[i].parameter);
 	}
 	
-	if (cachedEditParameters.size() > 10)
+	if (cachedEditParameters.size() > 50)
 	{
 		std::unordered_map<std::string, std::vector<CVarParameter*>> categorizedParams;
 

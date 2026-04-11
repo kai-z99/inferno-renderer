@@ -93,6 +93,17 @@ static AutoCVar_Int cvarTonemapIndex(
     },
     CVarEditHint::Step);
 
+static AutoCVar_Int cvarEnableShadows(
+    "r.shadows",
+    "0: disable, 1: enable",
+    1,
+    IntCVarOptions{
+        .minValue = 0,
+        .maxValue = 1,
+        .step = 1
+    },
+    CVarEditHint::Checkbox);
+
 
 //clip space test 
 static bool is_visible_basic(const RenderObject& obj, const glm::mat4& viewproj)
@@ -1861,7 +1872,7 @@ void VulkanEngine::draw()
     //draw shadow map 
     vkutil::transition_image(cmd, _shadowDepthImage.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL, VK_IMAGE_ASPECT_DEPTH_BIT);
 
-    draw_shadow_map(cmd);
+    if (cvarEnableShadows.Get()) draw_shadow_map(cmd);
 
     // draw the actual scene, which gets resolved from msaaImage -> drawImage
     // transition image states to match deynamic rendering info
@@ -1966,11 +1977,12 @@ void VulkanEngine::update_scene()
     perFrameDataGPU.lightViewProj = get_sun_matrix();
 
     renderOptions.enableSpecularAA = cvarEnableSpecularAA.Get();
+    renderOptions.enableShadows = cvarEnableShadows.Get();;
     renderOptions.iblIntensity = cvarIblIntensity.GetFloat();
     renderOptions.prefilterMaxLod = std::floor(std::log2(static_cast<float>(_prefilterMapResolution)));
-    renderOptions._paddingRenderOptions0 = 0.0f;
     renderOptions.sunlightColor = glm::vec4(1.f);
     renderOptions.sunlightDirection = glm::vec4(cvarSunDir.Get(), cvarSunPower.Get());
+    
 
 
     auto end = std::chrono::system_clock::now();
