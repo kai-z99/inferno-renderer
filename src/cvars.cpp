@@ -1,5 +1,6 @@
 #include "cvars.h"
 
+#include "file_dialog.h"
 
 #include <unordered_map>
 
@@ -12,6 +13,7 @@
 #include "imgui_internal.h"
 #include <shared_mutex>
 #include <mutex>
+#include <optional>
 #include <vector>
 
 enum class CVarType : char
@@ -48,6 +50,7 @@ public:
 	int32_t intStep = 1;
 	std::string intFormat = "%i";
 	uint32_t stringMaxLength = 256;
+	bool stringShowFileBrowse = false;
 };
 
 #include "cvars_util.h"
@@ -460,6 +463,7 @@ CVarParameter* CVarSystemImpl::CreateStringCVar(const char* name, const char* de
 
 	param->type = CVarType::STRING;
 	param->stringMaxLength = std::max<uint32_t>(1, options.maxLength);
+	param->stringShowFileBrowse = options.showFileBrowse;
 
 	GetCVarArray<std::string>()->Add(
 		ClampStringValue(param, defaultValue ? defaultValue : ""),
@@ -1017,13 +1021,18 @@ void CVarSystemImpl::EditParameter(CVarParameter* p, float textWidth)
 				}
 
 				ImGui::BeginGroup();
-				// leave room for Apply on the same line
+				// leave room for Browse / Apply on the same line
 				constexpr float kLabelSlack = 50.f;
 				const ImGuiStyle& applyStyle = ImGui::GetStyle();
 				const float applyBtnW = ImGui::CalcTextSize("Apply").x + applyStyle.FramePadding.x * 2.f;
+				const float browseBtnW = p->stringShowFileBrowse
+					? ImGui::CalcTextSize("Browse...").x + applyStyle.FramePadding.x * 2.f
+					: 0.f;
+				const float extraBtnsW = applyBtnW + browseBtnW
+					+ (p->stringShowFileBrowse ? applyStyle.ItemInnerSpacing.x : 0.f);
 				const float editorW = std::max(
 					80.f,
-					ImGui::GetContentRegionAvail().x - (textWidth + kLabelSlack) - applyBtnW - applyStyle.ItemInnerSpacing.x);
+					ImGui::GetContentRegionAvail().x - (textWidth + kLabelSlack) - extraBtnsW - applyStyle.ItemInnerSpacing.x);
 				Label(p->name.c_str(), textWidth, editorW);
 				const size_t bufCap = static_cast<size_t>(std::max<uint32_t>(1, p->stringMaxLength)) + 1;
 				std::vector<char> editBuffer(bufCap, '\0');
@@ -1039,10 +1048,23 @@ void CVarSystemImpl::EditParameter(CVarParameter* p, float textWidth)
 				draft.assign(editBuffer.data());
 
 				ImGui::SameLine();
+				bool pickedPath = false;
+				if (p->stringShowFileBrowse)
+				{
+					if (ImGui::Button("Browse..."))
+					{
+						if (std::optional<std::string> picked = open_model_file_dialog())
+						{
+							draft = *picked;
+							pickedPath = true;
+						}
+					}
+					ImGui::SameLine();
+				}
 				const bool clickApply = ImGui::Button("Apply");
 				ImGui::EndGroup();
 
-				if (enterApply || clickApply)
+				if (enterApply || clickApply || pickedPath)
 				{
 					const std::string applied = ClampStringValue(p, draft);
 					GetCVarArray<std::string>()->SetCurrent(applied, p->arrayIndex);

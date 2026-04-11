@@ -33,14 +33,13 @@ static AutoCVar_Float cvarModelScale(
 
 static void accumulate_scene_aabb(
     const std::shared_ptr<Node>& node,
-    const glm::mat4& scaleM,
     glm::vec3& sceneMin,
     glm::vec3& sceneMax,
     bool& anyGeometry)
 {
     if (auto meshNode = std::dynamic_pointer_cast<MeshNode>(node))
     {
-        const glm::mat4 M = scaleM * meshNode->worldTransform;
+        const glm::mat4 M = meshNode->worldTransform;
         for (const GeoSurface& s : meshNode->mesh->surfaces)
         {
             const glm::vec3 o = s.bounds.origin;
@@ -64,7 +63,7 @@ static void accumulate_scene_aabb(
 
     for (const auto& child : node->children)
     {
-        accumulate_scene_aabb(child, scaleM, sceneMin, sceneMax, anyGeometry);
+        accumulate_scene_aabb(child, sceneMin, sceneMax, anyGeometry);
     }
 }
 
@@ -1038,11 +1037,11 @@ std::optional<std::shared_ptr<LoadedGLTF>> loadGltf(VulkanEngine *engine, std::f
         glm::vec3 sceneMin(std::numeric_limits<float>::max());
         glm::vec3 sceneMax(std::numeric_limits<float>::lowest());
         bool anyGeometry = false;
-        const glm::mat4 scaleM = glm::scale(glm::mat4(1.f), glm::vec3(cvarModelScale.Get()));
         for (const auto& root : file.topNodes)
         {
-            accumulate_scene_aabb(root, scaleM, sceneMin, sceneMax, anyGeometry);
+            accumulate_scene_aabb(root, sceneMin, sceneMax, anyGeometry);
         }
+        //before any scaling
         file.sceneCenter = anyGeometry ? 0.5f * (sceneMin + sceneMax) : glm::vec3(0.f);
     }
 
@@ -1085,6 +1084,12 @@ std::optional<AllocatedImage> load_hdr_image(VulkanEngine *engine, const std::fi
     stbi_image_free(data);
 
     return image;
+}
+
+glm::vec3 LoadedGLTF::worldSceneCenter() const
+{
+    const float s = cvarModelScale.Get();
+    return glm::vec3(s) * sceneCenter;
 }
 
 void LoadedGLTF::Draw(const glm::mat4 &topMatrix, DrawContext &ctx)

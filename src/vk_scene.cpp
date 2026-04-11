@@ -29,6 +29,6 @@ void MeshNode::Draw(const glm::mat4& topMatrix, DrawContext& ctx)
         }
 	}
 
-	// recurse down
+	// recurse down 
 	Node::Draw(topMatrix, ctx);
 }

@@ -31,6 +31,8 @@ add_executable (engine
   cvars.h
   cvars.cpp
   cvars_util.h
+  file_dialog.h
+  file_dialog.cpp
 )
 
 set_target_properties(engine PROPERTIES
@@ -51,6 +53,7 @@ target_precompile_headers(engine PUBLIC
 )
 
 if(WIN32)
+  target_link_libraries(engine PRIVATE comdlg32)
   add_custom_command(TARGET engine POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_RUNTIME_DLLS:engine> $<TARGET_FILE_DIR:engine>
     COMMAND_EXPAND_LISTS

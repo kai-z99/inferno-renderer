@@ -29,8 +29,8 @@
 static AutoCVar_String cvarModelPath(
     "r.modelPath",
     "Path to glTF/glb relative to working directory",
-    "assets/IridescenceSuzanne.glb",
-    StringCVarOptions{ .maxLength = 512 },
+    "assets/DamagedHelmet.glb",
+    StringCVarOptions{ .maxLength = 512, .showFileBrowse = true },
     CVarEditHint::TextBoxApply);
 
 static AutoCVar_Float cvarRenderScale(
@@ -1226,16 +1226,12 @@ void VulkanEngine::init_imgui()
 void VulkanEngine::init_scene()
 {
     // init model
-    //std::string structurePath = { "assets/orange/MandarinOrange.gltf" };
-    //std::string structurePath = { "assets/scifi/SciFiHelmet.gltf" };
-    //std::string structurePath = { "assets/main_sponza/NewSponza_Main_glTF_003.gltf" };
-    //std::string structurePath = { "assets/CompareClearcoat.glb" };
     load_gltf_if_stale();
-    mainCamera.target = loadedGltf->sceneCenter;
+    mainCamera.target = loadedGltf->worldSceneCenter();
 
     // init sky
 
-    auto skyboxImage = load_hdr_image(this, "assets/test_skybox7.hdr");
+    auto skyboxImage = load_hdr_image(this, "assets/test_skybox4.hdr");
     assert(skyboxImage.has_value());
     _skyboxImage = *skyboxImage;
 
@@ -1949,7 +1945,7 @@ void VulkanEngine::update_scene()
     auto start = std::chrono::system_clock::now();
 
     load_gltf_if_stale();
-    mainCamera.target = loadedGltf->sceneCenter;
+    mainCamera.target = loadedGltf->worldSceneCenter();
 
     //reset draw context
 	mainDrawContext.OpaqueSurfaces.clear();

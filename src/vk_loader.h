@@ -49,8 +49,8 @@ struct LoadedGLTF : public IRenderable
 
     VulkanEngine* creator;
 
-    /// World-space center of all mesh geometry (matches `Draw` scale + node `worldTransform`).
-    glm::vec3 sceneCenter { 0.f };
+    glm::vec3 sceneCenter { 0.f }; //no scale
+    glm::vec3 worldSceneCenter() const;
 
     ~LoadedGLTF() { clearAll(); };
 

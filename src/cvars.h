@@ -43,6 +43,7 @@ struct IntCVarOptions
 struct StringCVarOptions
 {
 	uint32_t maxLength = 256;
+	bool showFileBrowse = false;
 };
 
 struct Vec3CVarOptions
