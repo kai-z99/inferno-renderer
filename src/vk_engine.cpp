@@ -25,6 +25,14 @@
 #include <chrono>
 #include <thread>
 
+
+static AutoCVar_String cvarModelPath(
+    "r.modelPath",
+    "Path to glTF/glb relative to working directory",
+    "assets/DamagedHelmet.glb",
+    StringCVarOptions{ .maxLength = 512 },
+    CVarEditHint::TextBox);
+
 static AutoCVar_Float cvarRenderScale(
     "r.renderScale",
     "Internal render scale",
@@ -1222,12 +1230,7 @@ void VulkanEngine::init_scene()
     //std::string structurePath = { "assets/scifi/SciFiHelmet.gltf" };
     //std::string structurePath = { "assets/main_sponza/NewSponza_Main_glTF_003.gltf" };
     //std::string structurePath = { "assets/CompareClearcoat.glb" };
-    std::string structurePath = { "assets/DamagedHelmet.glb" };
-    auto structureFile = loadGltf(this, structurePath);
-
-    assert(structureFile.has_value());
-
-    loadedScenes["structure"] = *structureFile;
+    load_gltf_if_stale();
 
     // init sky
 
@@ -1944,11 +1947,12 @@ void VulkanEngine::update_scene()
 {
     auto start = std::chrono::system_clock::now();
 
+    load_gltf_if_stale();
 
     //reset draw context
 	mainDrawContext.OpaqueSurfaces.clear();
     mainDrawContext.TransparentSurfaces.clear();
-    loadedScenes["structure"]->Draw(glm::mat4{ 1.f }, mainDrawContext);
+    loadedGltf->Draw(glm::mat4{ 1.f }, mainDrawContext);
 
     //update cmaera
     mainCamera.update();
@@ -1996,6 +2000,25 @@ glm::mat4 VulkanEngine::get_sun_matrix()
 
     lightProj[1][1] *= -1.0f;
     return lightProj * lightView; 
+}
+
+void VulkanEngine::load_gltf_if_stale()
+{
+    const char* requested = cvarModelPath.Get();
+
+    if (_loadedGltfPath == requested) return;
+
+    vkDeviceWaitIdle(_device); 
+    
+    auto loaded = loadGltf(this, requested);
+    if (!loaded)
+    {
+        fmt::print("Error, model not loaded.\n");
+        return;
+    }
+
+    loadedGltf = std::move(*loaded);
+    _loadedGltfPath = requested;
 }
 
 void VulkanEngine::run()
@@ -2088,7 +2111,7 @@ void VulkanEngine::cleanup()
         // make sure gpu is done
         vkDeviceWaitIdle(_device);
 
-        loadedScenes.clear();
+        //loadedScenes.clear();
 
         // Per frame resources
         for (int i = 0; i < FRAME_OVERLAP; i++)

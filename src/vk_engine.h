@@ -217,9 +217,12 @@ private:
 	RenderOptions_GPU renderOptions;
 	Camera mainCamera;
 	DrawContext mainDrawContext;
-	std::unordered_map<std::string, std::shared_ptr<LoadedGLTF>> loadedScenes;
+	//std::unordered_map<std::string, std::shared_ptr<LoadedGLTF>> loadedScenes;
+	std::shared_ptr<LoadedGLTF> loadedGltf;
+	std::string _loadedGltfPath;
 	std::unordered_map<std::string, std::shared_ptr<Node>> loadedNodes;
 	std::vector<std::shared_ptr<MeshAsset>> testMeshes;
+	void load_gltf_if_stale();
 
 	// default resources
 	AllocatedImage _whiteImage;
