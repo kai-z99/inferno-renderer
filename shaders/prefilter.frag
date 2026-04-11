@@ -16,8 +16,6 @@ layout(push_constant) uniform PushConstants
     int sourceRes;
 } pc;
 
-const float PI = 3.14159265359;
-
 vec3 faceUvToDir(int face, vec2 uv)
 {
     // uv [0,1] -> [-1,1]

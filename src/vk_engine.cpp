@@ -1231,6 +1231,7 @@ void VulkanEngine::init_scene()
     //std::string structurePath = { "assets/main_sponza/NewSponza_Main_glTF_003.gltf" };
     //std::string structurePath = { "assets/CompareClearcoat.glb" };
     load_gltf_if_stale();
+    mainCamera.target = loadedGltf->sceneCenter;
 
     // init sky
 
@@ -1948,6 +1949,7 @@ void VulkanEngine::update_scene()
     auto start = std::chrono::system_clock::now();
 
     load_gltf_if_stale();
+    mainCamera.target = loadedGltf->sceneCenter;
 
     //reset draw context
 	mainDrawContext.OpaqueSurfaces.clear();

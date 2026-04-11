@@ -17,6 +17,57 @@
 #include <fastgltf/core.hpp>
 #include <fastgltf/tools.hpp>
 
+#include <limits>
+
+static AutoCVar_Float cvarModelScale(
+    "r.modelScale",
+    "Internal render scale",
+    1.0,
+    FloatCVarOptions{
+        .minValue = 0.1,
+        .maxValue = 50.0,
+        .step = 0.01f,
+        .format = "%.2f",
+    },
+    CVarEditHint::Drag);
+
+static void accumulate_scene_aabb(
+    const std::shared_ptr<Node>& node,
+    const glm::mat4& scaleM,
+    glm::vec3& sceneMin,
+    glm::vec3& sceneMax,
+    bool& anyGeometry)
+{
+    if (auto meshNode = std::dynamic_pointer_cast<MeshNode>(node))
+    {
+        const glm::mat4 M = scaleM * meshNode->worldTransform;
+        for (const GeoSurface& s : meshNode->mesh->surfaces)
+        {
+            const glm::vec3 o = s.bounds.origin;
+            const glm::vec3 e = s.bounds.extents;
+            for (int ix = -1; ix <= 1; ix += 2)
+            {
+                for (int iy = -1; iy <= 1; iy += 2)
+                {
+                    for (int iz = -1; iz <= 1; iz += 2)
+                    {
+                        const glm::vec3 corner = o + glm::vec3(static_cast<float>(ix) * e.x, static_cast<float>(iy) * e.y, static_cast<float>(iz) * e.z);
+                        const glm::vec3 w = glm::vec3(M * glm::vec4(corner, 1.f));
+                        sceneMin = glm::min(sceneMin, w);
+                        sceneMax = glm::max(sceneMax, w);
+                        anyGeometry = true;
+                    }
+                }
+            }
+        }
+    }
+
+    for (const auto& child : node->children)
+    {
+        accumulate_scene_aabb(child, scaleM, sceneMin, sceneMax, anyGeometry);
+    }
+}
+
 struct MikkPrimitiveData 
 {
     std::vector<Vertex>* vertices;
@@ -929,6 +980,18 @@ std::optional<std::shared_ptr<LoadedGLTF>> loadGltf(VulkanEngine *engine, std::f
         }
     }
 
+    {
+        glm::vec3 sceneMin(std::numeric_limits<float>::max());
+        glm::vec3 sceneMax(std::numeric_limits<float>::lowest());
+        bool anyGeometry = false;
+        const glm::mat4 scaleM = glm::scale(glm::mat4(1.f), glm::vec3(cvarModelScale.Get()));
+        for (const auto& root : file.topNodes)
+        {
+            accumulate_scene_aabb(root, scaleM, sceneMin, sceneMax, anyGeometry);
+        }
+        file.sceneCenter = anyGeometry ? 0.5f * (sceneMin + sceneMax) : glm::vec3(0.f);
+    }
+
     return scene;
 }
 
@@ -970,23 +1033,11 @@ std::optional<AllocatedImage> load_hdr_image(VulkanEngine *engine, const std::fi
     return image;
 }
 
-static AutoCVar_Float cvarModelScale(
-    "r.modelScale",
-    "Internal render scale",
-    1.0,
-    FloatCVarOptions{
-        .minValue = 0.1,
-        .maxValue = 50.0,
-        .step = 0.01f,
-        .format = "%.2f",
-    },
-    CVarEditHint::Drag);
-
-
 void LoadedGLTF::Draw(const glm::mat4 &topMatrix, DrawContext &ctx)
 {
     // create renderables from the scenenodes
-    for (auto& n : topNodes) {
+    for (auto& n : topNodes) 
+    {
         n->Draw(topMatrix * glm::scale(glm::mat4(1.0f), glm::vec3(cvarModelScale.Get())) , ctx);
     }
 }
