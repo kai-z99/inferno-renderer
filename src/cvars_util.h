@@ -61,7 +61,7 @@ inline bool IsEditHintCompatible(CVarType type, CVarEditHint hint)
 	case CVarType::VEC3:
 		return hint == CVarEditHint::TextBox || hint == CVarEditHint::Slider || hint == CVarEditHint::Drag;
 	case CVarType::STRING:
-		return hint == CVarEditHint::TextBox;
+		return hint == CVarEditHint::TextBox || hint == CVarEditHint::TextBoxApply;
 	default:
 		return false;
 	}

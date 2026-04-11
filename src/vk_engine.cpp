@@ -31,7 +31,7 @@ static AutoCVar_String cvarModelPath(
     "Path to glTF/glb relative to working directory",
     "assets/DamagedHelmet.glb",
     StringCVarOptions{ .maxLength = 512 },
-    CVarEditHint::TextBox);
+    CVarEditHint::TextBoxApply);
 
 static AutoCVar_Float cvarRenderScale(
     "r.renderScale",
@@ -2013,7 +2013,6 @@ void VulkanEngine::load_gltf_if_stale()
     auto loaded = loadGltf(this, requested);
     if (!loaded)
     {
-        fmt::print("Error, model not loaded.\n");
         return;
     }
 

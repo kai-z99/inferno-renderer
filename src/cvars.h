@@ -17,6 +17,7 @@ enum class CVarFlags : uint32_t
 enum class CVarEditHint : uint8_t
 {
 	TextBox,
+	TextBoxApply,
 	Slider,
 	Drag,
 	Step,

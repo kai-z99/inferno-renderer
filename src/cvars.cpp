@@ -985,7 +985,12 @@ void CVarSystemImpl::EditParameter(CVarParameter* p, float textWidth)
 		{
 			if (p->editHint == CVarEditHint::TextBox)
 			{
-				Label(p->name.c_str(), textWidth);
+				//use remaining width for the field
+				constexpr float kLabelSlack = 50.f;
+				const float editorW = std::max(
+					80.f,
+					ImGui::GetContentRegionAvail().x - (textWidth + kLabelSlack));
+				Label(p->name.c_str(), textWidth, editorW);
 				std::vector<char> editBuffer(std::max<uint32_t>(1, p->stringMaxLength) + 1, '\0');
 				std::string currentValue = GetCVarArray<std::string>()->GetCurrent(p->arrayIndex);
 				std::strncpy(editBuffer.data(), currentValue.c_str(), editBuffer.size() - 1);
@@ -995,6 +1000,54 @@ void CVarSystemImpl::EditParameter(CVarParameter* p, float textWidth)
 				if (ImGui::InputText("", editBuffer.data(), editBuffer.size()))
 				{
 					GetCVarArray<std::string>()->SetCurrent(ClampStringValue(p, editBuffer.data()), p->arrayIndex);
+				}
+				ImGui::PopID();
+			}
+			else if (p->editHint == CVarEditHint::TextBoxApply)
+			{
+				static std::unordered_map<int32_t, std::pair<std::string, std::string>> stringApplyDraftAndBaseline;
+				const std::string committed = GetCVarArray<std::string>()->GetCurrent(p->arrayIndex);
+				auto& slot = stringApplyDraftAndBaseline[p->arrayIndex];
+				std::string& draft = slot.first;
+				std::string& baselineCommitted = slot.second;
+				if (baselineCommitted != committed)
+				{
+					draft = committed;
+					baselineCommitted = committed;
+				}
+
+				ImGui::BeginGroup();
+				// leave room for Apply on the same line
+				constexpr float kLabelSlack = 50.f;
+				const ImGuiStyle& applyStyle = ImGui::GetStyle();
+				const float applyBtnW = ImGui::CalcTextSize("Apply").x + applyStyle.FramePadding.x * 2.f;
+				const float editorW = std::max(
+					80.f,
+					ImGui::GetContentRegionAvail().x - (textWidth + kLabelSlack) - applyBtnW - applyStyle.ItemInnerSpacing.x);
+				Label(p->name.c_str(), textWidth, editorW);
+				const size_t bufCap = static_cast<size_t>(std::max<uint32_t>(1, p->stringMaxLength)) + 1;
+				std::vector<char> editBuffer(bufCap, '\0');
+				std::strncpy(editBuffer.data(), draft.c_str(), editBuffer.size() - 1);
+				editBuffer[editBuffer.size() - 1] = '\0';
+
+				ImGui::PushID(p->name.c_str());
+				const bool enterApply = ImGui::InputText(
+					"",
+					editBuffer.data(),
+					editBuffer.size(),
+					ImGuiInputTextFlags_EnterReturnsTrue);
+				draft.assign(editBuffer.data());
+
+				ImGui::SameLine();
+				const bool clickApply = ImGui::Button("Apply");
+				ImGui::EndGroup();
+
+				if (enterApply || clickApply)
+				{
+					const std::string applied = ClampStringValue(p, draft);
+					GetCVarArray<std::string>()->SetCurrent(applied, p->arrayIndex);
+					baselineCommitted = GetCVarArray<std::string>()->GetCurrent(p->arrayIndex);
+					draft = baselineCommitted;
 				}
 				ImGui::PopID();
 			}
