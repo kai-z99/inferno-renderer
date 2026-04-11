@@ -117,7 +117,7 @@ private:
 
 	void draw_scene(VkCommandBuffer cmd);
 	void draw_skybox(VkCommandBuffer cmd, VkDescriptorSet& perFrameDescriptorSet);
-	void draw_geometry(VkCommandBuffer cmd, VkDescriptorSet& perFrameDescriptorSet);
+	void draw_geometry(VkCommandBuffer cmd, VkDescriptorSet& perFrameDescriptorSet, VkDescriptorSet& renderOptionsDescriptorSet);
 	void draw_shadow_map(VkCommandBuffer cmd);
 	void draw_tonemap(VkCommandBuffer cmd);
 	void draw_imgui(VkCommandBuffer cmd, VkImageView targetImageView);
@@ -186,6 +186,7 @@ private:
 	VkDescriptorSet _irradianceDescriptorSet;
 	VkDescriptorSet _prefilterDescriptorSet;
 	VkDescriptorSetLayout _perFrameDescriptorLayout;
+	VkDescriptorSetLayout _renderOptionsDescriptorLayout;
 	VkDescriptorSetLayout _lightingDescriptorLayout;
 	VkDescriptorSetLayout _skyboxDescriptorLayout;
 	VkDescriptorSetLayout _tonemapDescriptorLayout;
@@ -213,6 +214,7 @@ private:
 
 	// scene state
 	PerFrameData_GPU perFrameDataGPU;
+	RenderOptions_GPU renderOptions;
 	Camera mainCamera;
 	DrawContext mainDrawContext;
 	std::unordered_map<std::string, std::shared_ptr<LoadedGLTF>> loadedScenes;

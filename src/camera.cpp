@@ -106,7 +106,20 @@ void Camera::processSDLEvent(SDL_Event &e)
 
 void Camera::update()
 {
-    controls = (CameraControls)cvarCameraControls.Get();
+    CameraControls newControls = (CameraControls)cvarCameraControls.Get();
+
+    if (newControls != controls)
+    {
+        if (newControls == CameraControls::Orbit)
+        {
+            orbitDistance = glm::clamp(
+                glm::length(position - target),
+                orbitMinDistance,
+                orbitMaxDistance);
+        }
+
+        controls = newControls;
+    }
 
     if (controls == CameraControls::Fly)
     {
@@ -115,9 +128,8 @@ void Camera::update()
     }
     else if (controls == CameraControls::Orbit)
     {
-        glm::vec3 forward = glm::normalize(glm::vec3(getRotationMatrix() * glm::vec4(0.f, 0.f, -1.f, 0.f)));
+        glm::vec3 forward = glm::normalize(
+            glm::vec3(getRotationMatrix() * glm::vec4(0.f, 0.f, -1.f, 0.f)));
         position = target - forward * orbitDistance;
     }
-
-    orbitDistance = glm::length(position - target);
 }

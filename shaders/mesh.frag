@@ -33,6 +33,9 @@ layout(set = 2, binding = 7) uniform sampler2D diffuseTransmissionFactorTex;
 layout(set = 2, binding = 8) uniform sampler2D clearcoatTex;
 layout(set = 2, binding = 9) uniform sampler2D clearcoatRoughnessTex;
 
+//set 3: render options
+#include "render_options.glsl"
+
 //in
 layout (location = 0) in vec3 inNormal;
 layout (location = 1) in vec3 inColor;
@@ -79,15 +82,19 @@ void main()
 	sd.clearcoatRoughness = texture(clearcoatRoughnessTex, inUV).g * materialData.clearcoat_factors.y;
 
 	//specular AA
-	sd.roughness = NormalFiltering(sd.roughness, sd.N);
-	sd.clearcoatRoughness = NormalFiltering(sd.clearcoatRoughness, sd.clearcoatNormal);
+	if (renderOptions.enableSpecularAA == 1)
+	{
+		sd.roughness = NormalFiltering(sd.roughness, sd.N);
+		sd.clearcoatRoughness = NormalFiltering(sd.clearcoatRoughness, sd.clearcoatNormal);
+	}
+	
 
 
 	// DIRECT LIGHT ----------------
 
-	vec3 lightCol = sceneData.sunlightColor.xyz;
-	float lightPower = sceneData.sunlightDirection.w;
-	vec3 lightDir = normalize(sceneData.sunlightDirection.xyz);
+	vec3 lightCol = renderOptions.sunlightColor.xyz;
+	float lightPower = renderOptions.sunlightDirection.w;
+	vec3 lightDir = normalize(renderOptions.sunlightDirection.xyz);
 
 	vec3 direct = EvalDirectLighting(sd, lightCol, lightPower, lightDir);
 	direct *= ShadowEval_PCF(shadowMap, inFragPosWorld, sceneData.lightViewProj);
@@ -95,8 +102,8 @@ void main()
 
 	// INDIRECT LIGHT --------------
 	
-	vec3 indirect = EvalIndirectLighting(sd, irradianceCubemap, prefilterCubemap, brdfLUT, sceneData.prefilterMaxLod );
-	indirect *= sceneData.iblIntensity; //artist tweak 
+	vec3 indirect = EvalIndirectLighting(sd, irradianceCubemap, prefilterCubemap, brdfLUT, renderOptions.prefilterMaxLod );
+	indirect *= renderOptions.iblIntensity; 
 	
 	outFragColor = vec4(direct + indirect + sd.emissive, 1.0);
 

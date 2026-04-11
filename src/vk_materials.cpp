@@ -37,10 +37,10 @@ void GLTFMetallic_Roughness::build_pipelines(VulkanEngine* engine)
 	layoutBuilder.add_binding(9, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER); //clearcoat roughness (G)
 	materialLayout = layoutBuilder.build(engine->_device, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT);
 
-	VkDescriptorSetLayout layouts[] = { engine->_perFrameDescriptorLayout, engine->_lightingDescriptorLayout, materialLayout };
+	VkDescriptorSetLayout layouts[] = { engine->_perFrameDescriptorLayout, engine->_lightingDescriptorLayout, materialLayout, engine->_renderOptionsDescriptorLayout };
 
 	VkPipelineLayoutCreateInfo mesh_layout_info = vkinit::pipeline_layout_create_info();
-	mesh_layout_info.setLayoutCount = 3;
+	mesh_layout_info.setLayoutCount = 4;
 	mesh_layout_info.pSetLayouts = layouts;
 	mesh_layout_info.pPushConstantRanges = &matrixRange;
 	mesh_layout_info.pushConstantRangeCount = 1;

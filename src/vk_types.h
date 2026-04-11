@@ -72,14 +72,18 @@ struct PerFrameData_GPU
     glm::mat4 view;
     glm::mat4 proj;
     glm::mat4 viewproj;
-    float iblIntensity;
-    float prefilterMaxLod;
-    float _padding0;
-    float _padding1;
-    glm::vec4 sunlightDirection; // w for sun power
-    glm::vec4 sunlightColor;
     glm::vec4 camPos;
     glm::mat4 lightViewProj;
+};
+
+struct RenderOptions_GPU
+{
+    uint32_t enableSpecularAA;
+    float iblIntensity;
+    float prefilterMaxLod;
+    float _paddingRenderOptions0;
+    glm::vec4 sunlightDirection; // w for sun power
+    glm::vec4 sunlightColor;
 };
 
 struct PrefilterPC

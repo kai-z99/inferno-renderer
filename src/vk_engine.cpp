@@ -134,11 +134,6 @@ static bool is_visible_basic(const RenderObject& obj, const glm::mat4& viewproj)
     return true;
 }
 
-static bool is_visible_planes(RenderObject& obj, const glm::mat4& viewproj)
-{
-    return 1;
-}
-
 static void set_viewport_scissor(VkCommandBuffer cmd, VkExtent2D extent)
 {
     VkViewport viewport{};
@@ -657,6 +652,13 @@ void VulkanEngine::init_descriptor_layouts()
         builder.add_binding(2, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER); //sampler cube for prefilter map
         builder.add_binding(3, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER); //sampler for LUT
         _lightingDescriptorLayout = builder.build(_device, VK_SHADER_STAGE_FRAGMENT_BIT);
+    }
+
+    // RENDER OPTIONS
+    {
+        DescriptorLayoutBuilder builder;
+        builder.add_binding(0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER); //render options
+        _renderOptionsDescriptorLayout = builder.build(_device, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT);
     }
 
     //TONE MAPPING 
@@ -1215,18 +1217,12 @@ void VulkanEngine::init_imgui()
 //inializes camera, gltfs, skybox
 void VulkanEngine::init_scene()
 {
-    // init camera
-    mainCamera.velocity = glm::vec3(0.f);
-	mainCamera.position = glm::vec3(0, 0, 0.5);
-    mainCamera.pitch = 0;
-    mainCamera.yaw = 0;
-
     // init model
     //std::string structurePath = { "assets/orange/MandarinOrange.gltf" };
     //std::string structurePath = { "assets/scifi/SciFiHelmet.gltf" };
     //std::string structurePath = { "assets/main_sponza/NewSponza_Main_glTF_003.gltf" };
-    std::string structurePath = { "assets/CompareClearcoat.glb" };
-    //std::string structurePath = { "assets/DamagedHelmet.glb" };
+    //std::string structurePath = { "assets/CompareClearcoat.glb" };
+    std::string structurePath = { "assets/DamagedHelmet.glb" };
     auto structureFile = loadGltf(this, structurePath);
 
     assert(structureFile.has_value());
@@ -1596,15 +1592,26 @@ void VulkanEngine::draw_scene(VkCommandBuffer cmd)
 	DescriptorWriter writer;                                         
 	writer.write_buffer(0, gpuSceneDataBuffer.buffer, sizeof(PerFrameData_GPU), 0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER); 
 	writer.update_set(_device, perFrameDescriptorSet); 
+    writer.clear();
+
+    //render options ds
+    AllocatedBuffer gpuRenderOptionsBuffer = vkutil::create_buffer(_allocator, sizeof(RenderOptions_GPU), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
+	RenderOptions_GPU* renderOptionsUniformData = (RenderOptions_GPU*)gpuRenderOptionsBuffer.allocation->GetMappedData(); //get cpu pointer to buffer mem
+	*renderOptionsUniformData = renderOptions; 
+	VkDescriptorSet renderOptionsDescriptorSet = get_current_frame()._frameDescriptors.allocate(_device, _renderOptionsDescriptorLayout);                                       
+	writer.write_buffer(0, gpuRenderOptionsBuffer.buffer, sizeof(RenderOptions_GPU), 0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER); 
+	writer.update_set(_device, renderOptionsDescriptorSet); 
+
 
     get_current_frame()._deletionQueue.push_function([=, this]() 
     {
 		vkutil::destroy_buffer(_allocator, gpuSceneDataBuffer);
+		vkutil::destroy_buffer(_allocator, gpuRenderOptionsBuffer);
 	});
 
     //Draw
     draw_skybox(cmd, perFrameDescriptorSet);
-    draw_geometry(cmd, perFrameDescriptorSet);
+    draw_geometry(cmd, perFrameDescriptorSet, renderOptionsDescriptorSet);
 }
 
 void VulkanEngine::draw_skybox(VkCommandBuffer cmd, VkDescriptorSet &perFrameDescriptorSet)
@@ -1617,7 +1624,7 @@ void VulkanEngine::draw_skybox(VkCommandBuffer cmd, VkDescriptorSet &perFrameDes
     vkCmdDraw(cmd, 3, 1, 0, 0);
 }
 
-void VulkanEngine::draw_geometry(VkCommandBuffer cmd, VkDescriptorSet &perFrameDescriptorSet)
+void VulkanEngine::draw_geometry(VkCommandBuffer cmd, VkDescriptorSet &perFrameDescriptorSet, VkDescriptorSet &renderOptionsDescriptorSet)
 {
     //reset stat counters
     stats.drawcall_count = 0;
@@ -1671,6 +1678,8 @@ void VulkanEngine::draw_geometry(VkCommandBuffer cmd, VkDescriptorSet &perFrameD
                     &perFrameDescriptorSet, 0, nullptr);
                 vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, r.material->pipeline->layout, 1, 1,
                     &_lightingDescriptorSet, 0, nullptr);
+                vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, r.material->pipeline->layout, 3, 1,
+                    &renderOptionsDescriptorSet, 0, nullptr);
                 
                 set_viewport_scissor(cmd, _drawExtent);
             }
@@ -1919,6 +1928,18 @@ void VulkanEngine::draw()
     _frameNumber++;
 }
 
+//render options
+static AutoCVar_Int cvarEnableSpecularAA(
+    "r.specularAA",
+    "0: disable, 1: enable",
+    1,
+    IntCVarOptions{
+        .minValue = 0,
+        .maxValue = 1,
+        .step = 1
+    },
+    CVarEditHint::Checkbox);
+
 void VulkanEngine::update_scene()
 {
     auto start = std::chrono::system_clock::now();
@@ -1939,14 +1960,15 @@ void VulkanEngine::update_scene()
     perFrameDataGPU.view = view;
     perFrameDataGPU.proj = projection;
     perFrameDataGPU.viewproj = projection * view;
-	perFrameDataGPU.iblIntensity = cvarIblIntensity.GetFloat();
-    perFrameDataGPU.prefilterMaxLod = std::floor(std::log2(static_cast<float>(_prefilterMapResolution)));
-	perFrameDataGPU._padding0 = 0.0f;
-	perFrameDataGPU._padding1 = 0.0f;
-	perFrameDataGPU.sunlightColor = glm::vec4(1.f);
-	perFrameDataGPU.sunlightDirection = glm::vec4(cvarSunDir.Get(), cvarSunPower.Get());
     perFrameDataGPU.camPos = glm::vec4(mainCamera.position, 1.0f);
-    perFrameDataGPU.lightViewProj = get_sun_matrix(); 
+    perFrameDataGPU.lightViewProj = get_sun_matrix();
+
+    renderOptions.enableSpecularAA = cvarEnableSpecularAA.Get();
+    renderOptions.iblIntensity = cvarIblIntensity.GetFloat();
+    renderOptions.prefilterMaxLod = std::floor(std::log2(static_cast<float>(_prefilterMapResolution)));
+    renderOptions._paddingRenderOptions0 = 0.0f;
+    renderOptions.sunlightColor = glm::vec4(1.f);
+    renderOptions.sunlightDirection = glm::vec4(cvarSunDir.Get(), cvarSunPower.Get());
 
 
     auto end = std::chrono::system_clock::now();
@@ -1956,7 +1978,7 @@ void VulkanEngine::update_scene()
 
 glm::mat4 VulkanEngine::get_sun_matrix()
 {
-    glm::vec3 lightDir = glm::normalize(cvarSunDir.Get()); // same source as sunlightDirection.xyz
+    glm::vec3 lightDir = glm::normalize(cvarSunDir.Get()); // same source as renderOptions.sunlightDirection.xyz
 
     //const float shadowDistance = 80.0f;
     const float orthoHalfSize  = 15.0f;
