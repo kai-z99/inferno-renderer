@@ -42,7 +42,7 @@ void main()
 
 	//normal/tangent
 	outNormal 	   	= normalMatrix * v.normal;
-	outTangent.xyz 	= normalMatrix * v.tangent.xyz;
+	outTangent.xyz 	= mat3(PushConstants.render_matrix) * v.tangent.xyz;
 	outTangent.w 	= v.tangent.w;
 
 	//color

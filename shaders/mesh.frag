@@ -56,7 +56,7 @@ void main()
 	SurfaceData sd;
 	sd.P = inFragPosWorld.xyz;
 	sd.N = normalize(inNormal);
-	if (length(inTangent.xyz) > 0.0)
+	if (length(inTangent.xyz) > 0.0) //apply normal mapping
 	{
 		vec3 T = normalize(inTangent.xyz);
 		vec3 B = normalize(cross(sd.N, T) * inTangent.w);
